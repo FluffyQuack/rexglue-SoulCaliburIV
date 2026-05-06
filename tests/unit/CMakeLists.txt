@@ -14,6 +14,7 @@ add_executable(unit_tests
     ppc/import_function_test.cpp
     ppc/stack_test.cpp
     system/guest_path_test.cpp
+    codegen/manifest_test.cpp
 )
 
 target_include_directories(unit_tests PRIVATE
