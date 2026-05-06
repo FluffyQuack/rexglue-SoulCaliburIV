@@ -180,8 +180,7 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
     runtime_->set_imgui_drawer(imgui_drawer_.get());
   }
 
-  auto status = runtime_->Setup(ppc_info_.code_base, ppc_info_.code_size, ppc_info_.image_base,
-                                ppc_info_.image_size, ppc_info_.func_mappings, std::move(config_));
+  auto status = runtime_->Setup(ppc_info_, std::move(config_));
   if (XFAILED(status)) {
     REXLOG_ERROR("Runtime setup failed: {:08X}", status);
     return false;
@@ -189,6 +188,13 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
 
   if (window_ && runtime_->input_system()) {
     static_cast<rex::input::InputSystem*>(runtime_->input_system())->AttachWindow(window_.get());
+  }
+
+  // Register recompiled modules with KernelState (multi-binary projects).
+  // This populates the recompiled_modules_ registry so that LoadUserModule
+  // can match guest paths to shared libraries at runtime.
+  if (ppc_info_.register_modules) {
+    ppc_info_.register_modules(runtime_->kernel_state());
   }
 
   if (imgui_drawer_) {

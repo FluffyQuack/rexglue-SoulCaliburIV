@@ -138,6 +138,7 @@ X_STATUS Runtime::Setup(RuntimeConfig config) {
   // Skip GPU initialization in tool mode (for analysis tools like codegen)
   if (tool_mode_) {
     REXSYS_INFO("Runtime initialized in tool mode (no GPU)");
+    setup_complete_ = true;
     return X_STATUS_SUCCESS;
   }
 
@@ -158,53 +159,61 @@ X_STATUS Runtime::Setup(RuntimeConfig config) {
   }
 
   REXSYS_INFO("Runtime initialized successfully");
+  setup_complete_ = true;
   return X_STATUS_SUCCESS;
 }
 
-X_STATUS Runtime::Setup(uint32_t code_base, uint32_t code_size, uint32_t image_base,
-                        uint32_t image_size, const PPCFuncMapping* func_mappings,
-                        RuntimeConfig config) {
-  // Guard against multiple singleton instances
+X_STATUS Runtime::Setup(const rex::PPCImageInfo& image_info, RuntimeConfig config) {
   if (instance_ != nullptr) {
     REXSYS_ERROR("Runtime::Setup() called but global instance already exists");
     return X_STATUS_UNSUCCESSFUL;
   }
 
-  // First perform the basic setup with injected config
   X_STATUS status = Setup(std::move(config));
   if (status != X_STATUS_SUCCESS) {
     return status;
   }
 
-  // Initialize function table in FunctionDispatcher for recompiled code dispatch
-  if (!function_dispatcher_->InitializeFunctionTable(code_base, code_size, image_base,
-                                                     image_size)) {
+  // Initialize per-module function table in guest memory at IMAGE_BASE + IMAGE_SIZE
+  if (!function_dispatcher_->InitializeFunctionTable(image_info.code_base, image_info.code_size,
+                                                     image_info.image_base, image_info.image_size,
+                                                     /*is_entrypoint=*/true)) {
     REXSYS_ERROR("Failed to initialize function table");
     return X_STATUS_UNSUCCESSFUL;
   }
 
-  // Register all recompiled functions from the mapping table
-  if (func_mappings) {
+  if (image_info.func_mappings) {
     int count = 0;
-    for (int i = 0; func_mappings[i].guest != 0; ++i) {
-      if (func_mappings[i].host != nullptr) {
-        function_dispatcher_->SetFunction(static_cast<uint32_t>(func_mappings[i].guest),
-                                          func_mappings[i].host);
-        ++count;
+    int duplicates = 0;
+    for (int i = 0; image_info.func_mappings[i].guest != 0; ++i) {
+      uint32_t guest = static_cast<uint32_t>(image_info.func_mappings[i].guest);
+      auto* host = image_info.func_mappings[i].host;
+      if (!host) {
+        continue;
       }
+      if (function_dispatcher_->GetFunction(guest)) {
+        REXSYS_WARN("func_mappings: duplicate guest address {:08X}", guest);
+        ++duplicates;
+      }
+      function_dispatcher_->SetFunction(guest, host);
+      ++count;
     }
-    REXSYS_DEBUG("Registered {} recompiled functions", count);
+    REXSYS_DEBUG("Registered {} recompiled functions ({} duplicates ignored)", count, duplicates);
   }
 
-  // Set the global instance for recompiled code access
   instance_ = this;
 
-  REXSYS_DEBUG("Runtime setup for recompiled code complete (code: {:08X}-{:08X})", code_base,
-               code_base + code_size);
+  REXSYS_DEBUG("Runtime setup complete (code: {:08X}-{:08X}, image: {:08X}-{:08X})",
+               image_info.code_base, image_info.code_base + image_info.code_size,
+               image_info.image_base, image_info.image_base + image_info.image_size);
   return X_STATUS_SUCCESS;
 }
 
 void Runtime::Shutdown() {
+  if (!setup_complete_ && instance_ != this) {
+    return;
+  }
+
   // Clear global instance
   if (instance_ == this) {
     instance_ = nullptr;
@@ -230,6 +239,7 @@ void Runtime::Shutdown() {
   memory_.reset();
 
   rex::perf::Profiler::Shutdown();
+  setup_complete_ = false;
 }
 
 uint8_t* Runtime::virtual_membase() const {
