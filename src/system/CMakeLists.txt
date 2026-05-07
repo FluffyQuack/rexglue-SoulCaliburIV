@@ -61,12 +61,6 @@ add_library(rex::kernel ALIAS rexruntime)
 # which already exports everything.
 set_target_properties(rexruntime PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS TRUE)
 
-# Producer-side define for REXCVAR_DECLARE_EXTERN in rex/cvar.h: compiling into
-# rexruntime emits no dllimport on these cvar declarations; every other TU that
-# includes the header gets __declspec(dllimport) so lld-link emits indirect
-# loads through the import table for cross-DLL data references.
-target_compile_definitions(rexruntime PRIVATE REXRUNTIME_BUILD)
-
 target_include_directories(rexruntime PUBLIC
     $<BUILD_INTERFACE:${REXGLUE_ROOT}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>

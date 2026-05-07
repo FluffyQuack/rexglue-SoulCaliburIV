@@ -14,8 +14,8 @@
 
 #include <rex/cvar.h>
 
-REXCVAR_DECLARE_EXTERN(bool, rexcrt_heap_enable);
-REXCVAR_DECLARE_EXTERN(uint32_t, rexcrt_heap_size_mb);
+REXCVAR_DECLARE(bool, rexcrt_heap_enable);
+REXCVAR_DECLARE(uint32_t, rexcrt_heap_size_mb);
 
 struct O1HeapInstance;
 

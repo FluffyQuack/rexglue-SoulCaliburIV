@@ -18,12 +18,10 @@ REXCVAR_DECLARE(bool, vsync);
 REXCVAR_DECLARE(bool, clear_memory_page_state);
 REXCVAR_DECLARE(bool, half_pixel_offset);
 REXCVAR_DECLARE(bool, async_shader_compilation);
-// video_mode_* and resolution live in rexruntime (defined by xboxkrnl_video.cpp);
-// the other GPU cvars in this header live in rexgraphics (STATIC).
-REXCVAR_DECLARE_EXTERN(int32_t, video_mode_width);
-REXCVAR_DECLARE_EXTERN(int32_t, video_mode_height);
-REXCVAR_DECLARE_EXTERN(double, video_mode_refresh_rate);
-REXCVAR_DECLARE_EXTERN(std::string, resolution);
+REXCVAR_DECLARE(int32_t, video_mode_width);
+REXCVAR_DECLARE(int32_t, video_mode_height);
+REXCVAR_DECLARE(double, video_mode_refresh_rate);
+REXCVAR_DECLARE(std::string, resolution);
 
 // GPU Resolution / Readback / Queries
 REXCVAR_DECLARE(int32_t, resolution_scale);
