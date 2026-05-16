@@ -185,6 +185,14 @@ void RemoveSink(spdlog::sink_ptr sink);
 void RemoveSink(LogCategoryId category, spdlog::sink_ptr sink);
 
 /**
+ * Replace the global console sink on every registered logger with `sink`.
+ * Pass nullptr to remove the console sink without replacement.
+ *
+ * @param sink  New console sink, or nullptr to remove.
+ */
+void ReplaceConsoleSink(spdlog::sink_ptr sink);
+
+/**
  * Update the format pattern on the stdout console sink.
  *
  * @param pattern  spdlog pattern string.

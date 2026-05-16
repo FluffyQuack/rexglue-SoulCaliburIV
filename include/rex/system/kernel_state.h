@@ -16,9 +16,11 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <rex/filesystem/vfs.h>
@@ -31,6 +33,8 @@
 #include <rex/system/xam/app_manager.h>
 #include <rex/system/xam/content_manager.h>
 #include <rex/system/xam/user_profile.h>
+#include <rex/system/function_dispatcher.h>
+#include <rex/system/shared_library.h>
 #include <rex/system/xcontent.h>
 #include <rex/system/xmemory.h>
 #include <rex/system/xobject.h>
@@ -241,6 +245,17 @@ class KernelState {
   object_ref<UserModule> LoadUserModule(const std::string_view name, bool call_entry = true);
   void UnloadUserModule(const object_ref<UserModule>& module, bool call_entry = true);
 
+  // Recompiled module registry (populated by generated RegisterRecompiledModules)
+  struct RecompiledModuleInfo {
+    std::string pe_name;
+    std::string guest_path;
+    std::string shared_lib_name;
+  };
+
+  void RegisterRecompiledModule(const char* pe_name, const char* guest_path,
+                                const char* shared_lib_name);
+  std::optional<RecompiledModuleInfo> FindRecompiledModule(std::string_view guest_path);
+
   object_ref<KernelModule> GetKernelModule(const std::string_view name);
   template <typename T>
   object_ref<KernelModule> LoadKernelModule() {
@@ -342,7 +357,14 @@ class KernelState {
   object_ref<UserModule> executable_module_;
   std::vector<object_ref<KernelModule>> kernel_modules_;
   std::vector<object_ref<UserModule>> user_modules_;
+  // Paths in-flight in LoadUserModule. Guarded by the global critical region.
+  std::unordered_set<std::string> loading_paths_;
   std::vector<TerminateNotification> terminate_notifications_;
+  std::vector<RecompiledModuleInfo> recompiled_modules_;
+  std::unordered_map<std::string, SharedLibrary> module_libraries_;
+  // FreeLibrary deferred to teardown so guest threads still in unloaded code
+  // don't return into freed pages. Drained at the end of ~KernelState.
+  std::vector<SharedLibrary> deferred_unload_libraries_;
 
   uint32_t kernel_guest_globals_ = 0;
 

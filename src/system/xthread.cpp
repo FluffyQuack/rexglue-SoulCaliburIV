@@ -110,16 +110,24 @@ XThread::~XThread() {
 
 thread_local XThread* current_xthread_tls_ = nullptr;
 
+namespace {
+
+XThread* GetBoundCurrentXThread() {
+  return current_xthread_tls_;
+}
+
+}  // namespace
+
 bool XThread::IsInThread() {
-  return current_xthread_tls_ != nullptr;
+  return GetBoundCurrentXThread() != nullptr;
 }
 
 bool XThread::IsInThread(XThread* other) {
-  return current_xthread_tls_ == other;
+  return GetBoundCurrentXThread() == other;
 }
 
 XThread* XThread::GetCurrentThread() {
-  XThread* thread = reinterpret_cast<XThread*>(current_xthread_tls_);
+  XThread* thread = GetBoundCurrentXThread();
   if (!thread) {
     assert_always("Attempting to use kernel stuff from a non-kernel thread");
   }

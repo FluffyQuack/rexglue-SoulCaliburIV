@@ -31,15 +31,19 @@
 #include <rex/audio/sdl/sdl_audio_system.h>
 #include <rex/input/input_system.h>
 #include <rex/kernel/init.h>
+#include <rex/system.h>
 #include <rex/system/kernel_state.h>
 #include <rex/system/xthread.h>
 #include <rex/ui/graphics_provider.h>
 #include <rex/ui/keybinds.h>
 #include <rex/version.h>
 
+#include <fmt/format.h>
 #include <imgui.h>
 
+#include <algorithm>
 #include <filesystem>
+#include <string_view>
 
 namespace rex {
 
@@ -49,9 +53,7 @@ ReXApp::~ReXApp() = default;
 
 ReXApp::ReXApp(ui::WindowedAppContext& ctx, std::string_view name, PPCImageInfo ppc_info,
                std::string_view usage)
-    : WindowedApp(ctx, name, usage), ppc_info_(ppc_info) {
-  AddPositionalOption("game_directory");
-}
+    : WindowedApp(ctx, name, usage), ppc_info_(ppc_info) {}
 
 bool ReXApp::OnInitialize() {
   if (!SetupEnvironment())
@@ -79,14 +81,6 @@ bool ReXApp::SetupEnvironment() {
   std::string game_data_cvar = REXCVAR_GET(game_data_root);
   if (!game_data_cvar.empty()) {
     game_dir = game_data_cvar;
-  } else if (auto arg = GetArgument("game_directory")) {
-    REXLOG_WARN(
-        "Positional 'game_directory' is deprecated; use --game_data_root= or "
-        "set it in {}.toml",
-        GetName());
-    game_dir = *arg;
-  } else {
-    game_dir = exe_dir / "assets";
   }
 
   // User data: cvar override, or platform user directory
@@ -154,7 +148,9 @@ bool ReXApp::SetupEnvironment() {
     REXLOG_INFO("Loaded config: {}", config_path_.filename().string());
 
   REXLOG_INFO("{} starting", GetName());
-  REXLOG_INFO("  Game directory: {}", game_data_root_.string());
+  if (!game_data_root_.empty()) {
+    REXLOG_INFO("  Game directory: {}", game_data_root_.string());
+  }
   if (!user_data_root_.empty()) {
     REXLOG_INFO("  User data:      {}", user_data_root_.string());
   }
@@ -167,6 +163,19 @@ bool ReXApp::SetupEnvironment() {
 }
 
 bool ReXApp::ConstructRuntime(const PathConfig& paths) {
+  if (paths.game_data_root.empty()) {
+    auto msg = std::string("--game_data_root was not provided.");
+    REXLOG_ERROR("{}", msg);
+    rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
+    return false;
+  }
+  if (!std::filesystem::is_directory(paths.game_data_root)) {
+    auto msg = fmt::format("--game_data_root does not exist: {}", paths.game_data_root.string());
+    REXLOG_ERROR("{}", msg);
+    rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
+    return false;
+  }
+
   runtime_ = std::make_unique<rex::Runtime>(paths.game_data_root, paths.user_data_root,
                                             paths.update_data_root, paths.cache_root);
   runtime_->set_app_context(&app_context());
@@ -180,8 +189,7 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
     runtime_->set_imgui_drawer(imgui_drawer_.get());
   }
 
-  auto status = runtime_->Setup(ppc_info_.code_base, ppc_info_.code_size, ppc_info_.image_base,
-                                ppc_info_.image_size, ppc_info_.func_mappings, std::move(config_));
+  auto status = runtime_->Setup(ppc_info_, std::move(config_));
   if (XFAILED(status)) {
     REXLOG_ERROR("Runtime setup failed: {:08X}", status);
     return false;
@@ -191,13 +199,17 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
     static_cast<rex::input::InputSystem*>(runtime_->input_system())->AttachWindow(window_.get());
   }
 
+  if (ppc_info_.register_modules) {
+    ppc_info_.register_modules(runtime_->kernel_state());
+  }
+
   if (imgui_drawer_) {
     auto* input_sys = static_cast<rex::input::InputSystem*>(runtime_->input_system());
     if (input_sys) {
       input_sys->SetActiveCallback([this]() {
         if (!debug_overlay_ && !console_overlay_ && !settings_overlay_)
           return true;
-        return !ImGui::GetIO().WantCaptureMouse;
+        return !imgui_drawer_->GetIO().WantCaptureMouse;
       });
     }
   }
@@ -205,9 +217,32 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
   std::string xex_image = "game:\\default.xex";
   OnLoadXexImage(xex_image);
 
+  // Mirrors the game:\ / d:\ -> game_data_root mapping in Runtime::SetupVfs.
+  {
+    constexpr std::string_view kGameDevice = "game:\\";
+    constexpr std::string_view kDDevice = "d:\\";
+    std::string_view tail = xex_image;
+    if (tail.starts_with(kGameDevice)) {
+      tail.remove_prefix(kGameDevice.size());
+    } else if (tail.starts_with(kDDevice)) {
+      tail.remove_prefix(kDDevice.size());
+    }
+    std::string host_tail{tail};
+    std::replace(host_tail.begin(), host_tail.end(), '\\', '/');
+    auto xex_host = paths.game_data_root / host_tail;
+    if (!std::filesystem::is_regular_file(xex_host)) {
+      auto msg = fmt::format("Entrypoint XEX not found: {}", xex_host.string());
+      REXLOG_ERROR("{}", msg);
+      rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
+      return false;
+    }
+  }
+
   status = runtime_->LoadXexImage(xex_image);
   if (XFAILED(status)) {
-    REXLOG_ERROR("Failed to load XEX: {:08X}", status);
+    auto msg = fmt::format("Failed to load XEX ({}): {:08X}", xex_image, status);
+    REXLOG_ERROR("{}", msg);
+    rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
     return false;
   }
 

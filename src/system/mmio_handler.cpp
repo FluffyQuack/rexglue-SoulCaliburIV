@@ -27,6 +27,10 @@ namespace rex::runtime {
 
 MMIOHandler* MMIOHandler::global_handler_ = nullptr;
 
+MMIOHandler* MMIOHandler::global_handler() {
+  return global_handler_;
+}
+
 std::unique_ptr<MMIOHandler> MMIOHandler::Install(uint8_t* virtual_membase,
                                                   uint8_t* physical_membase, uint8_t* membase_end,
                                                   HostToGuestVirtual host_to_guest_virtual,
@@ -44,7 +48,7 @@ std::unique_ptr<MMIOHandler> MMIOHandler::Install(uint8_t* virtual_membase,
       host_to_guest_virtual_context, access_violation_callback, access_violation_callback_context));
 
   // Install exception handler for memory coherence (SharedMemory write tracking).
-  // Note: MMIO operations are handled at the recompiler level via PPC_MM_LOAD/STORE
+  // Note: MMIO operations are handled at the recompiler level via REX_MM_LOAD/STORE
   // macros that call CheckLoad/CheckStore directly.
   arch::ExceptionHandler::Install(ExceptionCallbackThunk, handler.get());
 

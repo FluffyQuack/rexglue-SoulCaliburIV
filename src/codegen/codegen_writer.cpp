@@ -73,18 +73,7 @@ nlohmann::json buildTemplateData(const rex::codegen::CodegenContext& ctx,
         {"name", funcName},
         {"is_rexcrt", isRexcrt},
         {"below_code_base", (fn->base() < codeMin)},
-        {"is_import", false},
-    });
-  }
-
-  // Build imports JSON array
-  nlohmann::json importsJson = nlohmann::json::array();
-  for (const auto& [addr, node] : ctx.graph.functions()) {
-    if (node->authority() != rex::codegen::FunctionAuthority::IMPORT)
-      continue;
-    importsJson.push_back({
-        {"address", fmt::format("0x{:X}", addr)},
-        {"name", node->name()},
+        {"is_import", fn->authority() == rex::codegen::FunctionAuthority::IMPORT},
     });
   }
 
@@ -107,9 +96,11 @@ nlohmann::json buildTemplateData(const rex::codegen::CodegenContext& ctx,
       {"code_base", fmt::format("0x{:X}", codeMin)},
       {"code_size", fmt::format("0x{:X}", codeMax - codeMin)},
       {"rexcrt_heap", cfg.rexcrtFunctions.contains("RtlAllocateHeap") ? 1 : 0},
+      {"thunk_reserve_size", fmt::format("0x{:X}", 0x10000u)},
+      {"has_dll_modules", ctx.hasDllModules()},
+      {"is_dll", ctx.isDllModule()},
       {"config_flags", configFlags},
       {"functions", functionsJson},
-      {"imports", importsJson},
       {"recomp_files", nlohmann::json::array()},
   };
 }
@@ -156,7 +147,7 @@ bool CodegenWriter::write(bool force) {
 
   // --- Output directory setup (from recompile.cpp) ---
   std::filesystem::path outputPath = ctx_.configDir() / config().outDirectoryPath;
-  REXCODEGEN_INFO("Output path: {}", outputPath.string());
+  REXCODEGEN_TRACE("Output path: {}", outputPath.string());
   std::filesystem::create_directories(outputPath);
 
   // --- Clean old generated files (from recompile.cpp) ---
@@ -168,6 +159,7 @@ bool CodegenWriter::write(bool force) {
       if (filename == "sources.cmake" || filename.starts_with(prefix) ||
           filename.starts_with("ppc_recomp") || filename.starts_with("ppc_func_mapping") ||
           filename.starts_with("function_table_init") || filename.starts_with("ppc_config")) {
+        deletedFiles_.push_back(filename);
         std::filesystem::remove(entry.path());
       }
     }
@@ -214,6 +206,12 @@ bool CodegenWriter::write(bool force) {
   out = renderWithJson(registry, "codegen/init_cpp", tmplData);
   SaveCurrentOutData(fmt::format("{}_init.cpp", projectName));
 
+  // Generate {project}_register.cpp (registration function for hash-based dispatch)
+  REXCODEGEN_TRACE("Recompile: generating {}_register.cpp", projectName);
+  tmplData["is_dll"] = ctx_.isDllModule();
+  out = renderWithJson(registry, "codegen/register_cpp", tmplData);
+  SaveCurrentOutData(fmt::format("{}_register.cpp", projectName));
+
   // Filter out imports and rexcrt functions before recompilation
   std::erase_if(functions, [](const FunctionNode* fn) {
     return fn->authority() == FunctionAuthority::IMPORT;
@@ -229,7 +227,7 @@ bool CodegenWriter::write(bool force) {
     emitCtx.resolver = runtime_->export_resolver();
 
   // Generate recomp files with size-based splitting
-  REXCODEGEN_INFO("Recompiling {} functions...", functions.size());
+  REXCODEGEN_TRACE("Recompiling {} functions...", functions.size());
   size_t currentFileBytes = 0;
   println("#include \"{}_init.h\"\n", projectName);
 
@@ -252,7 +250,7 @@ bool CodegenWriter::write(bool force) {
   }
 
   SaveCurrentOutData();
-  REXCODEGEN_INFO("Recompilation complete.");
+  REXCODEGEN_TRACE("Recompilation complete.");
 
   // Generate sources.cmake
   REXCODEGEN_TRACE("Recompile: generating sources.cmake");
@@ -323,6 +321,8 @@ void CodegenWriter::FlushPendingWrites() {
       fclose(f);
       REXCODEGEN_TRACE("Wrote {} bytes to {}", content.size(), filePath);
     }
+
+    writtenFiles_.push_back(filename);
   }
 
   pendingWrites.clear();

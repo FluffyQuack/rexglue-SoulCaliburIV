@@ -33,23 +33,6 @@
 #include <rex/system/xtypes.h>
 #include <rex/ui/flags.h>
 
-REXCVAR_DEFINE_INT32(video_mode_width, 1280, "GPU", "Guest video mode width in pixels")
-    .range(640, 0x0FFF)
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
-REXCVAR_DEFINE_INT32(video_mode_height, 720, "GPU", "Guest video mode height in pixels")
-    .range(480, 0x0FFF)
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
-REXCVAR_DEFINE_STRING(resolution, "", "GPU",
-                      "Common resolution preset for both guest video mode and startup window (for "
-                      "example: 720p, 1080p, 1440p, 4k, 1280x720)")
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
-REXCVAR_DEFINE_DOUBLE(video_mode_refresh_rate, 60.0, "GPU", "Guest video mode refresh rate in Hz")
-    .range(24.0, 240.0)
-    .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-
 namespace {
 // Display gamma type: 0 - linear, 1 - sRGB (CRT), 2 - BT.709 (HDTV), 3 - power
 constexpr uint32_t kDisplayGammaType = 2;

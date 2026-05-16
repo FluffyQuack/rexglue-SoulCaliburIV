@@ -564,8 +564,8 @@ std::string FunctionNode::emitCpp(const EmitContext& ctx) const {
               for (auto label : activeJt->targets) {
                 labels.emplace(label);
               }
-              REXCODEGEN_INFO("Late-detected jump table at 0x{:08X} with {} entries", blockBase,
-                              activeJt->targets.size());
+              REXCODEGEN_TRACE("Late-detected jump table at 0x{:08X} with {} entries", blockBase,
+                               activeJt->targets.size());
             }
           }
         }
@@ -1056,10 +1056,10 @@ size_t FunctionGraph::sealAllReady() {
         sealed++;
       } else {
         couldNotSeal++;
-        REXCODEGEN_WARN("FunctionGraph::sealAllReady: 0x{:08X} ({}) cannot seal ({} unresolved)",
-                        base, node->name(), node->unresolvedJumps().size());
+        REXCODEGEN_DEBUG("FunctionGraph::sealAllReady: 0x{:08X} ({}) cannot seal ({} unresolved)",
+                         base, node->name(), node->unresolvedJumps().size());
         for (const auto& jump : node->unresolvedJumps()) {
-          REXCODEGEN_WARN("  0x{:08X} -> 0x{:08X}", jump.site, jump.target);
+          REXCODEGEN_DEBUG("  0x{:08X} -> 0x{:08X}", jump.site, jump.target);
         }
       }
     }
@@ -1102,7 +1102,7 @@ void FunctionGraph::sealAll() {
     throw std::runtime_error(msg);
   }
 
-  REXCODEGEN_INFO("FunctionGraph::sealAll: all {} functions sealed", functions_.size());
+  REXCODEGEN_TRACE("FunctionGraph::sealAll: all {} functions sealed", functions_.size());
 }
 
 //=============================================================================

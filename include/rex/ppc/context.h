@@ -36,6 +36,10 @@ struct PPCContext;
 // Function signature for recompiled PPC functions
 using PPCFunc = void(PPCContext& ctx, uint8_t* base);
 
+namespace rex::runtime {
+PPCFunc* ResolveIndirectFunction(uint32_t guest_address);
+}  // namespace rex::runtime
+
 //=============================================================================
 // PPC Function Macros
 //=============================================================================
@@ -240,23 +244,17 @@ using PPCCRRegister = rex::ppc::CRRegister;
 using PPCVRegister = rex::ppc::VRegister;
 using PPCFPSCRRegister = rex::ppc::FPSCRRegister;
 
-#define PPC_ROUND_NEAREST rex::ppc::kRoundNearest
-#define PPC_ROUND_TOWARD_ZERO rex::ppc::kRoundTowardZero
-#define PPC_ROUND_UP rex::ppc::kRoundUp
-#define PPC_ROUND_DOWN rex::ppc::kRoundDown
-#define PPC_ROUND_MASK rex::ppc::kRoundMask
-
 //=============================================================================
 // PPCContext Structure
 //=============================================================================
 
 struct alignas(0x40) PPCContext {
   PPCRegister r3;
-#if !defined(PPC_CONFIG_NON_ARGUMENT_AS_LOCAL) && !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
+#if !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
   PPCRegister r0;
 #endif
   PPCRegister r1;
-#if !defined(PPC_CONFIG_NON_ARGUMENT_AS_LOCAL) && !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
+#if !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
   PPCRegister r2;
 #endif
   PPCRegister r4;
@@ -266,12 +264,12 @@ struct alignas(0x40) PPCContext {
   PPCRegister r8;
   PPCRegister r9;
   PPCRegister r10;
-#if !defined(PPC_CONFIG_NON_ARGUMENT_AS_LOCAL) && !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
+#if !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
   PPCRegister r11;
   PPCRegister r12;
 #endif
   PPCRegister r13;
-#if !defined(PPC_CONFIG_NON_VOLATILE_AS_LOCAL) && !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
+#if !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
   PPCRegister r14;
   PPCRegister r15;
   PPCRegister r16;
@@ -292,22 +290,22 @@ struct alignas(0x40) PPCContext {
   PPCRegister r31;
 #endif
 
-#if !defined(PPC_CONFIG_SKIP_LR) && !defined(REX_CONFIG_SKIP_LR)
+#if !defined(REX_CONFIG_SKIP_LR)
   uint64_t lr;
 #endif
-#if !defined(PPC_CONFIG_CTR_AS_LOCAL) && !defined(REX_CONFIG_CTR_AS_LOCAL)
+#if !defined(REX_CONFIG_CTR_AS_LOCAL)
   PPCRegister ctr;
 #endif
-#if !defined(PPC_CONFIG_XER_AS_LOCAL) && !defined(REX_CONFIG_XER_AS_LOCAL)
+#if !defined(REX_CONFIG_XER_AS_LOCAL)
   PPCXERRegister xer;
 #endif
-#if !defined(PPC_CONFIG_RESERVED_AS_LOCAL) && !defined(REX_CONFIG_RESERVED_AS_LOCAL)
+#if !defined(REX_CONFIG_RESERVED_AS_LOCAL)
   PPCRegister reserved;
 #endif
-#if !defined(PPC_CONFIG_SKIP_MSR) && !defined(REX_CONFIG_SKIP_MSR)
+#if !defined(REX_CONFIG_SKIP_MSR)
   uint32_t msr = 0x200A000;
 #endif
-#if !defined(PPC_CONFIG_CR_AS_LOCAL) && !defined(REX_CONFIG_CR_AS_LOCAL)
+#if !defined(REX_CONFIG_CR_AS_LOCAL)
   PPCCRRegister cr0;
   PPCCRRegister cr1;
   PPCCRRegister cr2;
@@ -320,7 +318,15 @@ struct alignas(0x40) PPCContext {
   PPCFPSCRRegister fpscr;
   uint8_t vscr_sat = 0;  // VSCR saturation flag (for vector ops)
 
-#if !defined(PPC_CONFIG_NON_ARGUMENT_AS_LOCAL) && !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
+  /**
+   * Last indirect call target address. Set by REX_CALL_INDIRECT_FUNC before
+   * dispatch. Used by the invalid-function trap to report the faulting address.
+   * Unconditional (not guarded by config flags) because ctr may be optimized
+   * to a local variable via REX_CONFIG_CTR_AS_LOCAL.
+   */
+  uint32_t last_indirect_target = 0;
+
+#if !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
   PPCRegister f0;
 #endif
   PPCRegister f1;
@@ -336,7 +342,7 @@ struct alignas(0x40) PPCContext {
   PPCRegister f11;
   PPCRegister f12;
   PPCRegister f13;
-#if !defined(PPC_CONFIG_NON_VOLATILE_AS_LOCAL) && !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
+#if !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
   PPCRegister f14;
   PPCRegister f15;
   PPCRegister f16;
@@ -371,7 +377,7 @@ struct alignas(0x40) PPCContext {
   PPCVRegister v11;
   PPCVRegister v12;
   PPCVRegister v13;
-#if !defined(PPC_CONFIG_NON_VOLATILE_AS_LOCAL) && !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
+#if !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
   PPCVRegister v14;
   PPCVRegister v15;
   PPCVRegister v16;
@@ -391,7 +397,7 @@ struct alignas(0x40) PPCContext {
   PPCVRegister v30;
   PPCVRegister v31;
 #endif
-#if !defined(PPC_CONFIG_NON_ARGUMENT_AS_LOCAL) && !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
+#if !defined(REX_CONFIG_NON_ARGUMENT_AS_LOCAL)
   PPCVRegister v32;
   PPCVRegister v33;
   PPCVRegister v34;
@@ -425,7 +431,7 @@ struct alignas(0x40) PPCContext {
   PPCVRegister v62;
   PPCVRegister v63;
 #endif
-#if !defined(PPC_CONFIG_NON_VOLATILE_AS_LOCAL) && !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
+#if !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
   PPCVRegister v64;
   PPCVRegister v65;
   PPCVRegister v66;
@@ -492,7 +498,7 @@ struct alignas(0x40) PPCContext {
   PPCVRegister v127;
 #endif
 
-#if !defined(PPC_CONFIG_NON_VOLATILE_AS_LOCAL) && !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
+#if !defined(REX_CONFIG_NON_VOLATILE_AS_LOCAL)
   //--- Non-volatile register save/restore --------
   // Layout: r14-r31 (144) | f14-f31 (144) | v14-v31 (288) | v64-v127 (1024)
   // Total: 1600 bytes.  Buffer must be at least this large.
@@ -525,16 +531,3 @@ struct alignas(0x40) PPCContext {
   inline void RestoreNonVolatiles(const uint8_t*) {}
 #endif
 };
-
-//=============================================================================
-// Legacy Compat Aliases
-//=============================================================================
-
-#define PPC_FUNC(x) REX_FUNC(x)
-#define PPC_FUNC_IMPL(x) REX_EXTERN(x)
-#define PPC_EXTERN_FUNC(x) REX_EXTERN(x)
-#define PPC_EXTERN_IMPORT(x) REX_EXTERN(x)
-#define PPC_WEAK_FUNC(x) REX_WEAK_FUNC(x)
-#define PPC_JOIN(x, y) REX_JOIN(x, y)
-#define PPC_XSTRINGIFY(x) REX_XSTRINGIFY(x)
-#define PPC_STRINGIFY(x) REX_STRINGIFY(x)

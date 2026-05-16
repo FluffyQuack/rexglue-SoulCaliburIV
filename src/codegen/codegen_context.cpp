@@ -48,9 +48,9 @@ Result<CodegenContext> CodegenContext::Create(const std::filesystem::path& confi
     xexPath = ctx.configDir_ / ctx.config_.filePath;
 
     if (!ctx.config_.patchFilePath.empty()) {
-      REXCODEGEN_INFO(
+      REXCODEGEN_WARN(
           "Patch file specified but XexPatcher not available. Use a pre-patched XEX file instead.");
-      REXCODEGEN_INFO("Ignoring patch file: {}", ctx.config_.patchFilePath);
+      REXCODEGEN_WARN("Ignoring patch file: {}", ctx.config_.patchFilePath);
     }
   }
 
@@ -87,8 +87,8 @@ Result<CodegenContext> CodegenContext::Create(const std::filesystem::path& confi
   ctx.binary_ = BinaryView::fromModule(*module);
   ctx.resolver_ = runtime.export_resolver();
 
-  REXCODEGEN_INFO("Loaded XEX: base=0x{:08X}, size=0x{:X}, entry=0x{:08X}",
-                  ctx.binary_.baseAddress(), ctx.binary_.imageSize(), ctx.binary_.entryPoint());
+  REXCODEGEN_TRACE("Loaded XEX: base=0x{:08X}, size=0x{:X}, entry=0x{:08X}",
+                   ctx.binary_.baseAddress(), ctx.binary_.imageSize(), ctx.binary_.entryPoint());
 
   // Initialize AnalysisState from binary
   ctx.analysisState_.format = "xex";

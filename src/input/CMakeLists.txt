@@ -1,7 +1,7 @@
 # rexinput - Input system library
 # Input system and drivers for Xbox 360 controller emulation
 
-add_library(rexinput STATIC
+add_library(rexinput OBJECT
     input_system.cpp
     mnk/mnk_input_driver.cpp
     nop/nop_input_driver.cpp
@@ -18,4 +18,4 @@ else()
     target_sources(rexinput PRIVATE sdl/sdl_input_driver.cpp)
 endif()
 
-target_link_libraries(rexinput PUBLIC rexcore SDL3::SDL3)
+target_link_libraries(rexinput PUBLIC rexcore rexui SDL3::SDL3)

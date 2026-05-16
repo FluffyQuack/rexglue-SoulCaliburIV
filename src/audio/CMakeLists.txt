@@ -1,7 +1,7 @@
 # rexaudio - Audio subsystem library
 # Audio processing and XMA decoding for Xbox 360 emulation
 
-add_library(rexaudio STATIC
+add_library(rexaudio OBJECT
     
     audio_driver.cpp
     audio_system.cpp

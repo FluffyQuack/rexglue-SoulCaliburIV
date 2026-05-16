@@ -57,7 +57,7 @@ class MMIOHandler {
                                               const void* host_to_guest_virtual_context,
                                               AccessViolationCallback access_violation_callback,
                                               void* access_violation_callback_context);
-  static MMIOHandler* global_handler() { return global_handler_; }
+  static MMIOHandler* global_handler();
 
   bool RegisterRange(uint32_t virtual_address, uint32_t mask, uint32_t size, void* context,
                      MMIOReadCallback read_callback, MMIOWriteCallback write_callback);

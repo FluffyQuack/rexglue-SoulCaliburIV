@@ -1,7 +1,7 @@
 # rexcore - Core utilities library
 # Foundation types, data structures, and threading primitives
 
-add_library(rexcore STATIC
+add_library(rexcore OBJECT
     arena.cpp
     bit_map.cpp
     bit_stream.cpp
@@ -41,6 +41,7 @@ if(WIN32)
         seh_win.cpp
         socket_win.cpp
         string_win.cpp
+        system_win.cpp
         threading_win.cpp
     )
 elseif(UNIX)
@@ -58,6 +59,7 @@ elseif(UNIX)
         seh_posix.cpp
         socket_posix.cpp
         string_posix.cpp
+        system_posix.cpp
         threading_posix.cpp
     )
 endif()

@@ -442,6 +442,20 @@ void RemoveSink(LogCategoryId category, spdlog::sink_ptr sink) {
   }
 }
 
+void ReplaceConsoleSink(spdlog::sink_ptr sink) {
+  std::lock_guard lock(g_mutex);
+  for (auto& entry : g_registry) {
+    if (!entry.logger)
+      continue;
+    auto& sinks = entry.logger->sinks();
+    if (g_console_sink)
+      std::erase(sinks, g_console_sink);
+    if (sink)
+      sinks.push_back(sink);
+  }
+  g_console_sink = sink;
+}
+
 void SetConsolePattern(const std::string& pattern) {
   if (g_console_sink)
     g_console_sink->set_pattern(pattern);

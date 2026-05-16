@@ -213,7 +213,7 @@ include(${PROJECT_SOURCE_DIR}/cmake/rexglue_fidelityfx.cmake)
 # imgui - Immediate mode GUI (no CMakeLists.txt, manual target)
 #=============================================================================
 set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/imgui")
-add_library(imgui STATIC
+add_library(imgui OBJECT
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_demo.cpp
     ${IMGUI_DIR}/imgui_draw.cpp
@@ -329,13 +329,50 @@ endif()
 # Tracy Profiler (optional)
 #=============================================================================
 if(REXGLUE_ENABLE_TRACY)
-    set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
-    set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
-    set(TRACY_DELAYED_INIT ON CACHE BOOL "" FORCE)
-    set(TRACY_MANUAL_LIFETIME ON CACHE BOOL "" FORCE)
-    set(TRACY_FIBERS ON CACHE BOOL "" FORCE)
-    add_subdirectory(tracy)
+    set(TRACY_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/tracy)
+    set(TRACY_PUBLIC_DIR ${TRACY_ROOT}/public)
+
+    find_package(Threads REQUIRED)
+
+    add_library(TracyClient SHARED ${TRACY_PUBLIC_DIR}/TracyClient.cpp)
+    add_library(Tracy::TracyClient ALIAS TracyClient)
+
+    target_compile_features(TracyClient PUBLIC cxx_std_11)
+
+    target_include_directories(TracyClient SYSTEM PUBLIC
+        $<BUILD_INTERFACE:${TRACY_PUBLIC_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/tracy>
+    )
+
+    target_link_libraries(TracyClient PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
+
+    if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_link_libraries(TracyClient PUBLIC ws2_32 dbghelp)
+    endif()
+
+    target_compile_definitions(TracyClient
+        PRIVATE
+            TRACY_EXPORTS
+        PUBLIC
+            TRACY_IMPORTS
+            TRACY_ENABLE
+            TRACY_ON_DEMAND
+            TRACY_DELAYED_INIT
+            TRACY_MANUAL_LIFETIME
+            TRACY_FIBERS
+    )
+
     target_compile_options(TracyClient PRIVATE -w)
+
+    install(DIRECTORY ${TRACY_PUBLIC_DIR}/tracy
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tracy
+            FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h" PATTERN "*.hmm")
+    install(DIRECTORY ${TRACY_PUBLIC_DIR}/client
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tracy
+            FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
+    install(DIRECTORY ${TRACY_PUBLIC_DIR}/common
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/tracy
+            FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h")
 endif()
 
 #=============================================================================
