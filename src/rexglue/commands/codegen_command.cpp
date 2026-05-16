@@ -55,10 +55,12 @@ bool ApplyEntry(const OverwriteEntry& entry) {
   std::error_code ec;
   switch (entry.action) {
     case OverwriteAction::Write: {
-      fs::create_directories(entry.path.parent_path(), ec);
-      if (ec) {
-        REXLOG_ERROR("Failed to create directory for {}: {}", entry.path.string(), ec.message());
-        return false;
+      if (auto parent = entry.path.parent_path(); !parent.empty()) {
+        fs::create_directories(parent, ec);
+        if (ec) {
+          REXLOG_ERROR("Failed to create directory for {}: {}", entry.path.string(), ec.message());
+          return false;
+        }
       }
       std::ofstream out(entry.path);
       if (!out) {
