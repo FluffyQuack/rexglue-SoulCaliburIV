@@ -1,0 +1,62 @@
+# sciv_hooks.toml — mid-ASM hooks (wired into sciv_manifest.toml `includes`).
+#
+# TEMPORARY Step-11 bring-up diagnostics ONLY. These hooks dump the engine type
+# registry (guest 0x830F5198) at fixed points to localize which call populates
+# it (the boot blocker: only slot 0 ever gets its +0x14 metadata; slots 1–13
+# stay zero, so the probe sub_8222D370 dereferences a null entry[id]+0x14).
+# They pinned registration to sub_8236f6b8's call tree (entered from
+# sub_82138a00, progress 0x100->0x200). See sciv/src/sciv_hooks.cpp for the
+# mechanism + result and SCIV_RECOMP_HISTORY.md for the investigation.
+#
+# Each hook takes no registers and returns void, so codegen emits a plain
+# `name();` call that does not perturb guest register/memory state. Remove this
+# file (and its `includes` entry + sciv_hooks.cpp) per Step 13 once closed.
+
+# Bootstrap (sub_82138428) entry, before `bl sub_823814e0` and the count=14
+# store. Registry here is whatever C++ static-init (_initterm) left: empty.
+[[midasm_hook]]
+address = 0x82138434
+name = "sciv_regdump_pre_init"
+after_instruction = false
+
+# After sub_823814e0 returned and count(0x82B56F24)=14 / descptr(0x82B56F20)
+# were stored (0x82138710..0x8213873c), before the engine init sub_82138a00.
+[[midasm_hook]]
+address = 0x82138744
+name = "sciv_regdump_post_subsys"
+after_instruction = false
+
+# Inside sub_82138a00, [progress 0x100,0x200): before `bl sub_8236f6b8` (still
+# 0/14) and before `bl sub_82372090` (now 1/14) — brackets slot-0 registration
+# to sub_8236f6b8. (sub_8233ea58, also called between, is a counter/timer.)
+[[midasm_hook]]
+address = 0x82138b64
+name = "sciv_regdump_a00_w2"
+after_instruction = false
+
+[[midasm_hook]]
+address = 0x82138ba4
+name = "sciv_regdump_a00_w3"
+after_instruction = false
+
+# After sub_82138a00 (progress 0x500), immediately before `bl sub_8222d370` at
+# 0x82138820 — the probe that dereferences entry[id]+0x14 and faults.
+[[midasm_hook]]
+address = 0x82138818
+name = "sciv_regdump_pre_probe"
+after_instruction = false
+
+# Bootstrap frame-pump drain-loop top (sub_82138428 @ 0x821387d0). REFRAME (this
+# pass): sub_82138a00 is the engine main-tick (timers/fixed-timestep/FPS, progress
+# 0x100->0x500), NOT a registrar. The loop pumps it while
+# `[0x82C37C14] && [[0x82C37C14]+0x30]==[0x82C37C10]`, then probes the registry —
+# i.e. it waits for an init/load stage to advance, and the 14 types register as a
+# side effect of that stage. This hook logs the loop's exit condition + the live
+# registry fill each pass, so the reason the pump stops (~17 frames) with the
+# registry empty is read directly. This is the control-flow decision point; the
+# deep writer/parser hooks (sub_8236da38/sub_8237ae70) were removed because those
+# paths were proven correct. See SCIV_RECOMP_HISTORY.md.
+[[midasm_hook]]
+address = 0x821387d0
+name = "sciv_dump_drain"
+after_instruction = false

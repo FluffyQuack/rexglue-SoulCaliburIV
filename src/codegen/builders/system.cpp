@@ -148,12 +148,16 @@ bool build_dcbtst(BuilderContext& ctx) {
 }
 
 bool build_dcbz(BuilderContext& ctx) {
-  // Compute EA, align to 32-byte cache line, apply physical offset
+  // Compute EA, align to the 128-byte Xenon cache line, apply physical offset.
+  // The Xbox 360 PPE has 128-byte cache lines, so dcbz zeroes 128 bytes -- not
+  // the 32 bytes assumed by generic PPC. Optimized guest memset routines (e.g.
+  // 0x821A111C) stride dcbz by 128 bytes per step; modeling 32 here leaves 3/4
+  // of every cache line as garbage. Same semantics as build_dcbzl below.
   ctx.print("\t{} = (", ctx.ea());
   if (ctx.insn.operands[0] != 0)
     ctx.print("{}.u32 + ", ctx.r(ctx.insn.operands[0]));
-  ctx.println("{}.u32) & ~31;", ctx.r(ctx.insn.operands[1]));
-  ctx.println("\tmemset((void*)REX_RAW_ADDR({}), 0, 32);", ctx.ea());
+  ctx.println("{}.u32) & ~127;", ctx.r(ctx.insn.operands[1]));
+  ctx.println("\tmemset((void*)REX_RAW_ADDR({}), 0, 128);", ctx.ea());
   return true;
 }
 

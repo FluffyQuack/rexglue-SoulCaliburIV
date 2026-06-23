@@ -59,6 +59,27 @@ function(rexglue_configure_target target_name)
     target_sources(${target_name} PRIVATE
         ${REXGLUE_SHARE_DIR}/rex_app.cpp)
 
+    # rex_app.cpp is an SDK-internal source compiled into the host target, so it
+    # needs the SDK's own header surface. In installed-package mode those headers
+    # are all flattened into one include dir (see rexglue_install.cmake), which
+    # rex::runtime re-exposes PUBLIC, so nothing extra is needed. In source-tree
+    # mode (add_subdirectory + REXSDK_DIR) the headers are scattered and only
+    # reachable via the SDK targets that own them -- and rexruntime links those
+    # PRIVATE, so it does not propagate them. Re-apply the two that rexruntime
+    # hides but rex_app.cpp requires:
+    #   - rexcore: the source include/ dir AND the binary include/ dir that holds
+    #     the configure_file-generated <rex/version.h>.
+    #   - imgui:   thirdparty/imgui, for <imgui.h> (used directly and via the
+    #     public rex/ui/overlay/*.h headers).
+    # INSTALL_INTERFACE genexes in these properties evaluate to empty in a build
+    # context, so only the BUILD_INTERFACE dirs are applied here.
+    foreach(_rex_dep rexcore imgui)
+        if(TARGET ${_rex_dep})
+            target_include_directories(${target_name} PRIVATE
+                $<TARGET_PROPERTY:${_rex_dep},INTERFACE_INCLUDE_DIRECTORIES>)
+        endif()
+    endforeach()
+
     target_compile_definitions(${target_name} PRIVATE
         REXGLUE_BUILD_CONFIG="$<CONFIG>")
 

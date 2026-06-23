@@ -420,8 +420,13 @@ void Win32Window::ApplyNewFullscreen() {
     // WM_SIZE).
     BeginBatchedSizeUpdate();
 
-    // Reinstate the non-client area.
-    SetWindowLong(hwnd_, GWL_STYLE, GetWindowLong(hwnd_, GWL_STYLE) | WS_OVERLAPPEDWINDOW);
+    // Reinstate the non-client area. Fullscreen explicitly uses WS_POPUP so
+    // Windows recognizes it as a borderless monitor-sized window; remove that
+    // style before restoring the normal overlapped-window decorations.
+    DWORD windowed_style = DWORD(GetWindowLong(hwnd_, GWL_STYLE));
+    windowed_style &= ~DWORD(WS_POPUP);
+    windowed_style |= WS_OVERLAPPEDWINDOW;
+    SetWindowLong(hwnd_, GWL_STYLE, LONG(windowed_style));
     if (destruction_receiver.IsWindowDestroyedOrClosed()) {
       if (!destruction_receiver.IsWindowDestroyed()) {
         EndBatchedSizeUpdate(destruction_receiver);
@@ -747,7 +752,14 @@ void Win32Window::ApplyFullscreenEntry(WindowDestructionReceiver& destruction_re
       return;
     }
   }
-  SetWindowLong(hwnd_, GWL_STYLE, GetWindowLong(hwnd_, GWL_STYLE) & ~DWORD(WS_OVERLAPPEDWINDOW));
+  // Use an explicit popup style for fullscreen. Merely removing
+  // WS_OVERLAPPEDWINDOW can leave the window treated as an undecorated
+  // overlapped window, which may retain non-client UI or fail Windows'
+  // fullscreen detection (notably around the taskbar).
+  DWORD fullscreen_style = DWORD(GetWindowLong(hwnd_, GWL_STYLE));
+  fullscreen_style &= ~DWORD(WS_OVERLAPPEDWINDOW);
+  fullscreen_style |= WS_POPUP;
+  SetWindowLong(hwnd_, GWL_STYLE, LONG(fullscreen_style));
   if (destruction_receiver.IsWindowDestroyedOrClosed()) {
     if (!destruction_receiver.IsWindowDestroyed()) {
       EndBatchedSizeUpdate(destruction_receiver);
@@ -965,6 +977,22 @@ bool Win32Window::HandleMouse(UINT message, WPARAM wParam, LPARAM lParam,
 
 bool Win32Window::HandleKeyboard(UINT message, WPARAM wParam, LPARAM lParam,
                                  WindowDestructionReceiver& destruction_receiver) {
+  // DXGI's automatic Alt+Enter handling is disabled by the D3D12 presenter so
+  // the window abstraction can provide consistent borderless fullscreen for
+  // every graphics backend. Alt-modified key presses arrive as WM_SYSKEY*
+  // messages on Win32, so handle the shortcut here before forwarding keyboard
+  // input to the guest or overlays. Ignore key-repeat messages to avoid
+  // toggling repeatedly while Enter is held.
+  const bool is_alt_enter =
+      wParam == VK_RETURN && (message == WM_SYSKEYDOWN || message == WM_SYSKEYUP) &&
+      (lParam & (LPARAM(1) << 29));
+  if (is_alt_enter) {
+    if (message == WM_SYSKEYDOWN && !(lParam & (LPARAM(1) << 30))) {
+      SetFullscreen(!IsFullscreen());
+    }
+    return true;
+  }
+
   KeyEvent e(this, VirtualKey(wParam), lParam & 0xFFFF, !!(lParam & (LPARAM(1) << 30)),
              !!(GetKeyState(VK_SHIFT) & 0x80), !!(GetKeyState(VK_CONTROL) & 0x80),
              !!(GetKeyState(VK_MENU) & 0x80), !!(GetKeyState(VK_LWIN) & 0x80));

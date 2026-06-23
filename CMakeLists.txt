@@ -120,6 +120,13 @@ if(WIN32)
         message(FATAL_ERROR "Unsupported Windows architecture: ${CMAKE_SYSTEM_PROCESSOR}")
     endif()
     add_compile_definitions(REX_PLATFORM_WINDOWS=1)
+
+    # Clang targeting the MSVC ABI generates GNU-style link commands that pass
+    # -nostdlib, which suppresses auto-linking of oldnames.lib. Vendored code
+    # (Tracy, FFmpeg, SDL3, ...) calls POSIX-name aliases such as fileno,
+    # isatty and itoa, which resolve to _fileno/_isatty/_itoa in oldnames.lib.
+    # Force that default lib for every link so those symbols resolve.
+    add_link_options(-Xlinker /defaultlib:oldnames)
 elseif(UNIX AND NOT APPLE)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
         set(REX_PLATFORM "linux-amd64")
