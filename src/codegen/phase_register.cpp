@@ -552,6 +552,7 @@ VoidResult registerEntryPoints(CodegenContext& ctx) {
     std::string name = cfg.name.empty() ? fmt::format("sub_{:08X}", address) : cfg.name;
     graph.addFunction(address, size, FunctionAuthority::CONFIG, true);
     graph.setFunctionName(address, name);
+    graph.setFunctionComment(address, cfg.comment);
     configFuncs++;
 
     if (cfg.isChunk()) {

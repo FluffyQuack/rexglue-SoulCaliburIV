@@ -107,6 +107,9 @@ class FunctionGraph {
   // Set function name
   void setFunctionName(uint32_t entry, std::string name);
 
+  // Set optional documentation comment (emitted above the recompiled function)
+  void setFunctionComment(uint32_t entry, std::string comment);
+
   // Set exception handler flag
   void setFunctionHasExceptionHandler(uint32_t entry, bool val);
 

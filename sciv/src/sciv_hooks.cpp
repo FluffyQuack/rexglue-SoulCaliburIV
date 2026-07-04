@@ -26,6 +26,35 @@
 // are removed). Wired via [[midasm_hook]] entries in sciv_fixups.toml.
 // ===========================================================================
 
+// Null-container guard in sub_82124CD8 (guest 0x82124D14).
+//
+// sub_82124CD8 looks up an entry in a manager (global 0x82CF0AF8). It is DESIGNED
+// to return 0 ("not found"): every caller null-checks the result -- e.g. the
+// crashing caller sub_82227268 at 0x82227708 does `cmplwi cr6,r3,0; beq` and
+// handles the null branch (it stores r24 and a default float, then continues).
+//
+// Internally the function fetches a sub-container via sub_821F2A10 (-> r5) and
+// then reads [r5+0] at 0x82124D14 WITHOUT a null check, relying on the invariant
+// "manager present (r30 != 0) => that sub-container is populated". sub_821F2A10
+// itself returns 0 when the container's element/state word [+0] <= 3 (not yet
+// filled). At 1x that invariant always holds by the time this runs.
+//
+// The SkipLogos guest-clock acceleration (below) breaks it: on the engine-tick
+// thread the manager exists but its container is still being populated, so
+// sub_821F2A10 returns null and the load faults -- read of guest 0 -> host
+// 0x100000000. Intermittent, only at the logo->cinematic boundary, and ONLY in
+// accelerated boots: it is absent from every 1x run that reached the same point
+// (compare logs 045-067 (clean) vs 091+ (crash); see the crash analysis).
+//
+// Fix: when r5 == 0, take the function's own "not found" exit by jumping to
+// 0x82124D5C (`li r3,0; <epilogue>; blr`). The skipped span (0x82124D14..D5C) is
+// pure bounds-check math with no side effects, and a 0 result is exactly what the
+// game produces when the manager is not ready -- a benign one-frame miss that the
+// caller already handles. When r5 != 0 the original lwz runs unchanged.
+bool sciv_sub_82124CD8_null_container_guard(PPCRegister& r5) {
+  return r5.u32 == 0;  // container not yet populated: return 0 ("not found")
+}
+
 // Null-source filter-read guard in obj_update_optional_source (guest 0x821B1368).
 //
 // That function takes (r3 = object, r4 = optional *source* object). It is called

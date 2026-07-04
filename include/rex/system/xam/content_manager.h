@@ -187,6 +187,9 @@ class ContentManager {
   std::filesystem::path ResolvePackageRoot(uint64_t xuid, XContentType content_type,
                                            uint32_t title_id = -1);
   std::filesystem::path ResolvePackagePath(uint64_t xuid, const XCONTENT_AGGREGATE_DATA& data);
+
+  // Flat user-facing DLC drop folder: content_root/DLC
+  std::filesystem::path ResolveDlcConvenienceRoot() const;
   std::filesystem::path ResolvePackageHeaderPath(const std::string_view file_name, uint64_t xuid,
                                                  uint32_t title_id,
                                                  XContentType content_type) const;

@@ -192,6 +192,11 @@ class ReXApp : public ui::WindowedApp, public ui::WindowListener, public ui::Win
  private:
   std::function<void(PathConfig)> MakeResumeCallback();
 
+  /// Verify the loaded XEX matches the image this build was recompiled from.
+  /// Shows an error dialog and returns false on mismatch. Called from
+  /// ConstructRuntime after LoadXexImage succeeds.
+  bool VerifyXexCompatibility();
+
   // WindowedApp overrides
   bool OnInitialize() override;
   void OnDestroy() override;

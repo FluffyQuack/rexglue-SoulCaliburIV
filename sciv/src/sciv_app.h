@@ -37,7 +37,66 @@ class ScivApp : public rex::ReXApp {
   void OnPostInitLogging() override {
     sciv::InstallCrashHandler();
     sciv::RaiseTimerResolution();
-    sciv::LoadConfig();
+    const sciv::Config& cfg = sciv::LoadConfig();
+
+    // Keyboard-as-controller bindings. Drive the SDK keyboard input driver's
+    // cvars from the INI [Keyboard1]/[Keyboard2] sections (key NAMES, validated
+    // on load). The drivers read these per-frame, so setting them here is in
+    // time. [Keyboard2] is a second local player on the same keyboard and is
+    // disabled by default. See sciv_settings.h and
+    // src/input/keyboard/keyboard_input_driver.cpp.
+    rex::cvar::SetFlagByName("keyboard_mode", cfg.keyboard_enabled ? "true" : "false");
+    rex::cvar::SetFlagByName("kb_dpad_up", cfg.kb_dpad_up);
+    rex::cvar::SetFlagByName("kb_dpad_down", cfg.kb_dpad_down);
+    rex::cvar::SetFlagByName("kb_dpad_left", cfg.kb_dpad_left);
+    rex::cvar::SetFlagByName("kb_dpad_right", cfg.kb_dpad_right);
+    rex::cvar::SetFlagByName("kb_a", cfg.kb_button_a);
+    rex::cvar::SetFlagByName("kb_b", cfg.kb_button_b);
+    rex::cvar::SetFlagByName("kb_x", cfg.kb_button_x);
+    rex::cvar::SetFlagByName("kb_y", cfg.kb_button_y);
+    rex::cvar::SetFlagByName("kb_lshoulder", cfg.kb_lshoulder);
+    rex::cvar::SetFlagByName("kb_rshoulder", cfg.kb_rshoulder);
+    rex::cvar::SetFlagByName("kb_ltrigger", cfg.kb_ltrigger);
+    rex::cvar::SetFlagByName("kb_rtrigger", cfg.kb_rtrigger);
+    rex::cvar::SetFlagByName("kb_start", cfg.kb_start);
+    rex::cvar::SetFlagByName("kb_back", cfg.kb_back);
+    rex::cvar::SetFlagByName("kb_rstick_up", cfg.kb_rstick_up);
+    rex::cvar::SetFlagByName("kb_rstick_down", cfg.kb_rstick_down);
+    rex::cvar::SetFlagByName("kb_rstick_left", cfg.kb_rstick_left);
+    rex::cvar::SetFlagByName("kb_rstick_right", cfg.kb_rstick_right);
+    REXLOG_INFO("keyboard1: Enabled = {} | Dpad U/D/L/R = {}/{}/{}/{} | A/B/X/Y = {}/{}/{}/{} | "
+                "LB/RB = {}/{} | LT/RT = {}/{} | Start/Back = {}/{} | RStick U/D/L/R = {}/{}/{}/{}",
+                cfg.keyboard_enabled ? "True" : "False", cfg.kb_dpad_up, cfg.kb_dpad_down,
+                cfg.kb_dpad_left, cfg.kb_dpad_right, cfg.kb_button_a, cfg.kb_button_b,
+                cfg.kb_button_x, cfg.kb_button_y, cfg.kb_lshoulder, cfg.kb_rshoulder,
+                cfg.kb_ltrigger, cfg.kb_rtrigger, cfg.kb_start, cfg.kb_back, cfg.kb_rstick_up,
+                cfg.kb_rstick_down, cfg.kb_rstick_left, cfg.kb_rstick_right);
+
+    rex::cvar::SetFlagByName("keyboard2_mode", cfg.keyboard2_enabled ? "true" : "false");
+    rex::cvar::SetFlagByName("kb2_dpad_up", cfg.kb2_dpad_up);
+    rex::cvar::SetFlagByName("kb2_dpad_down", cfg.kb2_dpad_down);
+    rex::cvar::SetFlagByName("kb2_dpad_left", cfg.kb2_dpad_left);
+    rex::cvar::SetFlagByName("kb2_dpad_right", cfg.kb2_dpad_right);
+    rex::cvar::SetFlagByName("kb2_a", cfg.kb2_button_a);
+    rex::cvar::SetFlagByName("kb2_b", cfg.kb2_button_b);
+    rex::cvar::SetFlagByName("kb2_x", cfg.kb2_button_x);
+    rex::cvar::SetFlagByName("kb2_y", cfg.kb2_button_y);
+    rex::cvar::SetFlagByName("kb2_lshoulder", cfg.kb2_lshoulder);
+    rex::cvar::SetFlagByName("kb2_rshoulder", cfg.kb2_rshoulder);
+    rex::cvar::SetFlagByName("kb2_ltrigger", cfg.kb2_ltrigger);
+    rex::cvar::SetFlagByName("kb2_rtrigger", cfg.kb2_rtrigger);
+    rex::cvar::SetFlagByName("kb2_start", cfg.kb2_start);
+    rex::cvar::SetFlagByName("kb2_back", cfg.kb2_back);
+    rex::cvar::SetFlagByName("kb2_rstick_up", cfg.kb2_rstick_up);
+    rex::cvar::SetFlagByName("kb2_rstick_down", cfg.kb2_rstick_down);
+    rex::cvar::SetFlagByName("kb2_rstick_left", cfg.kb2_rstick_left);
+    rex::cvar::SetFlagByName("kb2_rstick_right", cfg.kb2_rstick_right);
+    REXLOG_INFO("keyboard2: Enabled = {} | Dpad U/D/L/R = {}/{}/{}/{} | A/B/X/Y = {}/{}/{}/{} | "
+                "LB/RB = {}/{} | LT/RT = {}/{} | Start/Back = {}/{}",
+                cfg.keyboard2_enabled ? "True" : "False", cfg.kb2_dpad_up, cfg.kb2_dpad_down,
+                cfg.kb2_dpad_left, cfg.kb2_dpad_right, cfg.kb2_button_a, cfg.kb2_button_b,
+                cfg.kb2_button_x, cfg.kb2_button_y, cfg.kb2_lshoulder, cfg.kb2_rshoulder,
+                cfg.kb2_ltrigger, cfg.kb2_rtrigger, cfg.kb2_start, cfg.kb2_back);
   }
 
   // Register project-specific keybinds. Called by the SDK right after the

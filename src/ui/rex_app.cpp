@@ -33,6 +33,8 @@
 #include <rex/kernel/init.h>
 #include <rex/system.h>
 #include <rex/system/kernel_state.h>
+#include <rex/system/user_module.h>
+#include <rex/system/xex_module.h>
 #include <rex/system/xthread.h>
 #include <rex/ui/graphics_provider.h>
 #include <rex/ui/keybinds.h>
@@ -246,6 +248,10 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
     return false;
   }
 
+  if (!VerifyXexCompatibility()) {
+    return false;
+  }
+
   OnPostLoadXexImage();
 
   if (ppc_info_.rexcrt_heap) {
@@ -258,6 +264,59 @@ bool ReXApp::ConstructRuntime(const PathConfig& paths) {
   OnPostSetup();
 
   return true;
+}
+
+bool ReXApp::VerifyXexCompatibility() {
+  // A wrong or mismatched default.xex decrypts and maps into guest memory just
+  // fine; the failure only shows up later when the recompiled code runs against
+  // an image it wasn't built from (crash / garbage). Catch it here instead.
+  //
+  // The recompiled build carries the exact layout of its source image
+  // (image base/size) plus the full guest->native function table. We compare
+  // the loaded image's base and size, then require its entry point to be a
+  // function this build actually recompiled. The entry-point test is the
+  // decisive one: a different *version* of the same game can share the image
+  // base and size but has a different entry point that isn't in our table.
+  auto module = runtime_->kernel_state()->GetExecutableModule();
+  if (!module) {
+    auto msg = std::string("Loaded XEX has no executable module.");
+    REXLOG_ERROR("{}", msg);
+    rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
+    return false;
+  }
+
+  const uint32_t loaded_base = module->xex_module()->base_address();
+  const uint32_t loaded_size = module->xex_module()->image_size();
+  const uint32_t loaded_entry = module->entry_point();
+
+  bool entry_recompiled = false;
+  if (ppc_info_.func_mappings) {
+    for (int i = 0; ppc_info_.func_mappings[i].guest != 0; ++i) {
+      if (static_cast<uint32_t>(ppc_info_.func_mappings[i].guest) == loaded_entry) {
+        entry_recompiled = true;
+        break;
+      }
+    }
+  }
+
+  const bool ok = loaded_base == ppc_info_.image_base &&
+                  loaded_size == ppc_info_.image_size && entry_recompiled;
+  if (ok) {
+    return true;
+  }
+
+  REXLOG_ERROR(
+      "Incompatible default.xex: expected base={:08X} size={:08X}, got base={:08X} "
+      "size={:08X} entry={:08X} (entry {} in recompiled function table)",
+      ppc_info_.image_base, ppc_info_.image_size, loaded_base, loaded_size, loaded_entry,
+      entry_recompiled ? "found" : "NOT found");
+
+  auto msg = fmt::format(
+      "Incompatible default.xex.\n\nPlease supply a compatible version, which should correspond with the latest build of the game. If the game had a Title Update, try applying the latest one to default.xex before running. Check the ReadMe.txt for more information.",
+      GetName(), ppc_info_.image_base, ppc_info_.image_size, loaded_base, loaded_size,
+      loaded_entry);
+  rex::ShowSimpleMessageBox(rex::SimpleMessageBoxType::Error, msg);
+  return false;
 }
 
 bool ReXApp::SetupPresentation() {

@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <string_view>
 #include <unordered_set>
 
 #include <fmt/format.h>
@@ -344,6 +345,27 @@ void emit_print(std::string& out, fmt::format_string<Args...> fmt, Args&&... arg
   fmt::vformat_to(std::back_inserter(out), fmt.get(), fmt::make_format_args(args...));
 }
 
+// Emit a documentation comment (harvested from the TOML config) as one or more
+// "// "-prefixed lines above a function definition. No-op when empty.
+void emit_doc_comment(std::string& out, const std::string& comment) {
+  if (comment.empty())
+    return;
+  size_t pos = 0;
+  while (pos <= comment.size()) {
+    size_t nl = comment.find('\n', pos);
+    std::string_view line = (nl == std::string::npos)
+                                ? std::string_view(comment).substr(pos)
+                                : std::string_view(comment).substr(pos, nl - pos);
+    if (line.empty())
+      out += "//\n";
+    else
+      out += fmt::format("// {}\n", line);
+    if (nl == std::string::npos)
+      break;
+    pos = nl + 1;
+  }
+}
+
 }  // namespace
 
 std::string FunctionNode::emitCpp(const EmitContext& ctx) const {
@@ -366,6 +388,7 @@ std::string FunctionNode::emitCpp(const EmitContext& ctx) const {
       name = fmt::format("sub_{:08X}", base());
     }
 
+    emit_doc_comment(out, comment_);
     emit_println(out, "// STUB: Function at 0x{:08X} has no discovered code blocks", base());
     emit_println(out, "DEFINE_REX_FUNC({}) {{", name);
     emit_println(out, "\tREX_FUNC_PROLOGUE();");
@@ -479,6 +502,7 @@ std::string FunctionNode::emitCpp(const EmitContext& ctx) const {
   }
 
   // Function signature with weak/alias pattern
+  emit_doc_comment(out, comment_);
   emit_println(out, "DEFINE_REX_FUNC({}) {{", name);
   emit_println(out, "\tREX_FUNC_PROLOGUE();");
 
@@ -881,6 +905,14 @@ size_t FunctionGraph::sealedCount() const {
 void FunctionGraph::setFunctionName(uint32_t entry, std::string name) {
   if (auto* node = getFunction(entry)) {
     node->setName(std::move(name));
+  }
+}
+
+void FunctionGraph::setFunctionComment(uint32_t entry, std::string comment) {
+  if (comment.empty())
+    return;
+  if (auto* node = getFunction(entry)) {
+    node->setComment(std::move(comment));
   }
 }
 

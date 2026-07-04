@@ -32,6 +32,11 @@ namespace xam {
 
 static const char* kThumbnailFileName = "__thumbnail.png";
 
+// Flat, user-friendly DLC drop folder under the content root. Lets users place
+// marketplace content at "<content_root>/DLC/<pack name>/..." instead of the
+// deeply-nested "<content_root>/<xuid>/<title>/00000002/<pack name>/..." layout.
+static const char* kDlcConvenienceDirName = "DLC";
+
 static const char* kGameUserContentDirName = "profile";
 
 static const char* kGameContentHeaderDirName = "Headers";
@@ -99,6 +104,10 @@ std::filesystem::path ContentManager::ResolvePackageRoot(uint64_t xuid, XContent
   return root_path_ / xuid_str / title_id_str / content_type_str;
 }
 
+std::filesystem::path ContentManager::ResolveDlcConvenienceRoot() const {
+  return root_path_ / kDlcConvenienceDirName;
+}
+
 std::filesystem::path ContentManager::ResolvePackagePath(uint64_t xuid,
                                                          const XCONTENT_AGGREGATE_DATA& data) {
   uint64_t used_xuid = (data.xuid != uint64_t(-1) && data.xuid != 0) ? uint64_t(data.xuid) : xuid;
@@ -111,7 +120,21 @@ std::filesystem::path ContentManager::ResolvePackagePath(uint64_t xuid,
   // Content path:
   // content_root/xuid/title_id/content_type/data_file_name/
   auto package_root = ResolvePackageRoot(used_xuid, data.content_type, data.title_id);
-  return package_root / rex::to_path(data.file_name());
+  auto package_path = package_root / rex::to_path(data.file_name());
+
+  // Convenience DLC folder fallback: if a marketplace package isn't present in
+  // the standard nested layout, look for it under the flat "DLC/<file_name>"
+  // folder. This is where ListContent() also surfaces convenience-folder DLC,
+  // so the game's mount (e.g. "SC4DLC:") resolves to the same files.
+  if (data.content_type == XContentType::kMarketplaceContent &&
+      !std::filesystem::exists(package_path)) {
+    auto convenience_path = ResolveDlcConvenienceRoot() / rex::to_path(data.file_name());
+    if (std::filesystem::exists(convenience_path)) {
+      return convenience_path;
+    }
+  }
+
+  return package_path;
 }
 
 std::filesystem::path ContentManager::ResolvePackageHeaderPath(const std::string_view file_name,
@@ -156,14 +179,59 @@ std::vector<XCONTENT_AGGREGATE_DATA> ContentManager::ListContent(uint32_t device
     }
 
     XCONTENT_AGGREGATE_DATA content_data;
-    if (XSUCCEEDED(ReadContentHeaderFile(rex::path_to_utf8(file_info.name), xuid, title_id,
-                                         content_type, content_data))) {
+    // NOTE: must test against X_ERROR_SUCCESS explicitly, NOT XSUCCEEDED().
+    // ReadContentHeaderFile returns X_ERROR_FILE_NOT_FOUND (== Win32 2) when a
+    // package has no .header, and XSUCCEEDED() only checks the top two severity
+    // bits, so it treats 2 as "success" -- which would emplace an uninitialized
+    // content_data (garbage display_name/file_name) instead of synthesizing one
+    // from the directory name. That broke DLC (no headers) while save (has a
+    // header) happened to work.
+    if (ReadContentHeaderFile(rex::path_to_utf8(file_info.name), xuid, title_id, content_type,
+                              content_data) == X_ERROR_SUCCESS) {
       result.emplace_back(std::move(content_data));
     } else {
       content_data.device_id = device_id;
       content_data.content_type = content_type;
       content_data.set_display_name(rex::path_to_utf16(file_info.name));
       content_data.set_file_name(rex::path_to_utf8(file_info.name));
+      content_data.title_id = title_id;
+      content_data.xuid = xuid;
+      result.emplace_back(std::move(content_data));
+    }
+  }
+
+  // Convenience DLC folder: surface marketplace content dropped into the flat
+  // "<content_root>/DLC/<pack name>/..." folder. Each immediate subdirectory is
+  // one package whose folder name is both its file_name and display_name (same
+  // synthesis as the standard-layout branch above). Only scanned on the common
+  // (xuid==0) pass, which is where marketplace content is always enumerated, so
+  // each package is added exactly once even when the profile xuid is non-zero.
+  //
+  // For SCIV the folder name is purely cosmetic: the game identifies each pack
+  // by mounting it as "SC4DLC:" and reading "SC4DLC:\index.dat", so users can
+  // name these subdirectories anything they like.
+  if (content_type == XContentType::kMarketplaceContent && xuid == 0) {
+    auto dlc_root = ResolveDlcConvenienceRoot();
+    for (const auto& file_info : rex::filesystem::ListFiles(dlc_root)) {
+      if (file_info.type != rex::filesystem::FileInfo::Type::kDirectory) {
+        continue;
+      }
+
+      auto folder_name = rex::path_to_utf8(file_info.name);
+      // Skip if a standard-layout package with the same name was already listed.
+      bool already_listed =
+          std::any_of(result.begin(), result.end(), [&folder_name](const auto& d) {
+            return d.file_name() == folder_name;
+          });
+      if (already_listed) {
+        continue;
+      }
+
+      XCONTENT_AGGREGATE_DATA content_data;
+      content_data.device_id = device_id;
+      content_data.content_type = content_type;
+      content_data.set_display_name(rex::path_to_utf16(file_info.name));
+      content_data.set_file_name(folder_name);
       content_data.title_id = title_id;
       content_data.xuid = xuid;
       result.emplace_back(std::move(content_data));

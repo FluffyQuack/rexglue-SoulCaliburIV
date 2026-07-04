@@ -17,7 +17,10 @@ out_directory_path = "generated/default"
 # dcbz 128-byte cache-line fix made the type registry fill 14/14, so the
 # per-iteration registry dumps (firing ~600x each) are now just noise that
 # throttles boot via synchronous log flushing. Re-add to re-enable the dumps.
-includes = [ "sciv_config.toml", "sciv_fixups.toml", "sciv_vtables.toml", "sciv_callbacks.toml" ]
+#
+# Keep sciv_fixups.toml last: it is the hand-authored overlay, so its names and
+# explicit boundaries must win over regenerated vtable/callback seed entries.
+includes = [ "sciv_config.toml", "sciv_vtables.toml", "sciv_callbacks.toml", "sciv_fixups.toml" ]
 
 # CRT setjmp/longjmp — located in Step 5 by disassembling the decrypted basefile
 # (xex1tool -b) and matching the callee-saved register save/restore signature.

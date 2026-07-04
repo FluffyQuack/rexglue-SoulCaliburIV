@@ -77,6 +77,24 @@ nlohmann::json buildTemplateData(const rex::codegen::CodegenContext& ctx,
     });
   }
 
+  nlohmann::json globalsJson = nlohmann::json::array();
+  std::vector<std::pair<uint32_t, const rex::codegen::GlobalConfig*>> globals;
+  globals.reserve(cfg.globals.size());
+  for (const auto& [address, global] : cfg.globals) {
+    globals.emplace_back(address, &global);
+  }
+  std::sort(globals.begin(), globals.end(), [](const auto& a, const auto& b) {
+    return a.first < b.first;
+  });
+
+  for (const auto& [address, global] : globals) {
+    globalsJson.push_back({
+        {"address", fmt::format("0x{:08X}u", address)},
+        {"name", global->name},
+        {"size", global->size},
+    });
+  }
+
   // Build config flags
   nlohmann::json configFlags = {
       {"skip_lr", cfg.skipLr},
@@ -101,6 +119,7 @@ nlohmann::json buildTemplateData(const rex::codegen::CodegenContext& ctx,
       {"is_dll", ctx.isDllModule()},
       {"config_flags", configFlags},
       {"functions", functionsJson},
+      {"globals", globalsJson},
       {"recomp_files", nlohmann::json::array()},
   };
 }

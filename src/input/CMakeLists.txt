@@ -3,6 +3,7 @@
 
 add_library(rexinput OBJECT
     input_system.cpp
+    keyboard/keyboard_input_driver.cpp
     mnk/mnk_input_driver.cpp
     nop/nop_input_driver.cpp
 )

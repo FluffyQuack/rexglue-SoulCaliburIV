@@ -22,6 +22,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 
 namespace sciv {
 
@@ -59,6 +60,72 @@ struct Config {
   //                    sciv_hooks.cpp / sciv_fixups.toml.
   // SkipLogos = False: play the logos at normal speed.
   bool skip_logos = true;
+
+  // [Keyboard1] / [Keyboard2]
+  //
+  // Basic keyboard-as-controller support. [Keyboard1] drives player 1's emulated
+  // Xbox 360 pad and [Keyboard2] a second player's, both alongside any real
+  // controller and both reading the same physical keyboard -- so for local co-op
+  // their bindings must not overlap. Each binding is a key NAME (the same
+  // vocabulary the SDK keybinds use), NOT an SDL keycode: on Windows the game
+  // window is a native Win32 window and key presses arrive as Win32 virtual keys.
+  // Accepted names include the letters A-Z, the digits 0-9, F1-F24, and: Up,
+  // Down, Left, Right, Return, Escape, Space, Tab, Backspace, Delete, Insert,
+  // Home, End, PageUp, PageDown, Shift, Control, Alt, Numpad0-Numpad9,
+  // NumpadEnter, NumpadPlus, NumpadMinus, NumpadStar, NumpadSlash. An unknown
+  // name keeps that binding's default (and is logged); a blank value unbinds it.
+  // [Keyboard1] drives the SDK `keyboard_mode` / `kb_*` cvars and [Keyboard2] the
+  // `keyboard2_mode` / `kb2_*` cvars in OnPostInitLogging.
+  //
+  // Player 1 default layout:
+  //   Up/Down/Left/Right -> D-pad     Space -> A   D -> X   S -> Y   A -> B
+  //   Shift -> LT   Z -> RT   X -> LB   C -> RB
+  //   Return -> Start   Backspace -> Back/Select   IJKL -> Right stick
+  bool keyboard_enabled = true;
+  std::string kb_dpad_up = "Up";
+  std::string kb_dpad_down = "Down";
+  std::string kb_dpad_left = "Left";
+  std::string kb_dpad_right = "Right";
+  std::string kb_button_a = "Space";
+  std::string kb_button_x = "D";
+  std::string kb_button_y = "S";
+  std::string kb_button_b = "A";
+  std::string kb_ltrigger = "Shift";
+  std::string kb_rtrigger = "Z";
+  std::string kb_lshoulder = "X";
+  std::string kb_rshoulder = "C";
+  std::string kb_start = "Return";
+  std::string kb_back = "Backspace";
+  std::string kb_rstick_up = "I";
+  std::string kb_rstick_down = "K";
+  std::string kb_rstick_left = "J";
+  std::string kb_rstick_right = "L";
+
+  // Player 2. Disabled by default; defaults to the numpad so it does not collide
+  // with player 1's keys when both share one keyboard. The numpad has no keys to
+  // spare for a right stick, so P2's right-stick binds are unbound by default.
+  //   Numpad8/2/4/6 -> D-pad     Numpad1 -> A   Numpad7 -> X   Numpad9 -> Y
+  //   Numpad3 -> B   NumpadSlash -> LB   NumpadStar -> RB
+  //   NumpadMinus -> LT   NumpadPlus -> RT   NumpadEnter -> Start   Numpad0 -> Back
+  bool keyboard2_enabled = false;
+  std::string kb2_dpad_up = "Numpad8";
+  std::string kb2_dpad_down = "Numpad2";
+  std::string kb2_dpad_left = "Numpad4";
+  std::string kb2_dpad_right = "Numpad6";
+  std::string kb2_button_a = "Numpad1";
+  std::string kb2_button_x = "Numpad7";
+  std::string kb2_button_y = "Numpad9";
+  std::string kb2_button_b = "Numpad3";
+  std::string kb2_lshoulder = "NumpadSlash";
+  std::string kb2_rshoulder = "NumpadStar";
+  std::string kb2_ltrigger = "NumpadMinus";
+  std::string kb2_rtrigger = "NumpadPlus";
+  std::string kb2_start = "NumpadEnter";
+  std::string kb2_back = "Numpad0";
+  std::string kb2_rstick_up = "";
+  std::string kb2_rstick_down = "";
+  std::string kb2_rstick_left = "";
+  std::string kb2_rstick_right = "";
 };
 
 // Loads `sciv.ini` from the working directory, writing a commented default file

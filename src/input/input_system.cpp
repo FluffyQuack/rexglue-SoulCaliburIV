@@ -16,6 +16,7 @@
 #include <rex/input/flags.h>
 #include <rex/input/input_driver.h>
 #include <rex/input/input_system.h>
+#include <rex/input/keyboard/keyboard_input_driver.h>
 #include <rex/input/mnk/mnk_input_driver.h>
 #include <rex/input/nop/nop_input_driver.h>
 #include <rex/input/sdl/sdl_input_driver.h>
@@ -146,13 +147,18 @@ X_RESULT InputSystem::GetKeystroke(uint32_t user_index, uint32_t flags,
                                    X_INPUT_KEYSTROKE* out_keystroke) {
   SCOPE_profile_cpu_f("hid");
 
+  // Return the first driver that actually has a keystroke. An EMPTY result must
+  // NOT short-circuit: otherwise a connected pad (or any earlier driver) with no
+  // pending event would shadow a later driver -- e.g. the keyboard driver -- and
+  // menus, which read input through this path, would never see its keystrokes.
+  // (GetState merges all drivers, so gameplay works even when this path doesn't.)
   bool any_connected = false;
   for (auto& driver : drivers_) {
     X_RESULT result = driver->GetKeystroke(user_index, flags, out_keystroke);
     if (result != X_ERROR_DEVICE_NOT_CONNECTED) {
       any_connected = true;
     }
-    if (result == X_ERROR_SUCCESS || result == X_ERROR_EMPTY) {
+    if (result == X_ERROR_SUCCESS) {
       return result;
     }
   }
@@ -183,6 +189,24 @@ std::unique_ptr<InputSystem> CreateDefaultInputSystem(bool tool_mode) {
     auto mnk_driver = std::make_unique<mnk::MnkInputDriver>(nullptr, 0);
     if (mnk_driver->Setup() == X_STATUS_SUCCESS) {
       input->AddDriver(std::move(mnk_driver));
+    }
+
+    // Keyboard driver (basic keyboard -> controller, no mouse). Added after the
+    // pad drivers so a connected gamepad keeps keystroke precedence; keyboard
+    // state still merges in InputSystem::GetState regardless of order.
+    auto keyboard_driver = std::make_unique<keyboard::KeyboardInputDriver>(
+        nullptr, 0, keyboard::Keyboard1Bindings());
+    if (keyboard_driver->Setup() == X_STATUS_SUCCESS) {
+      input->AddDriver(std::move(keyboard_driver));
+    }
+
+    // Second keyboard driver for local co-op on the same physical keyboard. It
+    // reads its own cvar set (keyboard2_mode / kb2_*) and is disabled by default;
+    // when off, IsEnabled() makes every query report "not connected".
+    auto keyboard2_driver = std::make_unique<keyboard::KeyboardInputDriver>(
+        nullptr, 0, keyboard::Keyboard2Bindings());
+    if (keyboard2_driver->Setup() == X_STATUS_SUCCESS) {
+      input->AddDriver(std::move(keyboard2_driver));
     }
   }
 

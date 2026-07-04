@@ -47,6 +47,10 @@ struct FunctionConfig {
   uint32_t end = 0;     // End address, exclusive (mutually exclusive with size)
   std::string name;     // Custom symbol name (empty = auto-generate sub_XXXXXXXX)
   uint32_t parent = 0;  // Parent function address (0 = standalone, non-zero = chunk)
+  std::string comment;  // TOML comment text harvested from the config (inline +
+                        // contiguous preceding lines), emitted above the
+                        // recompiled function. Empty = none. Lines are joined
+                        // with '\n' (no leading "#"/"//" markers).
 
   // Get effective size (prefers size over end)
   uint32_t getSize(uint32_t address) const {
@@ -54,6 +58,12 @@ struct FunctionConfig {
   }
   // Returns true if this is a discontinuous chunk belonging to a parent function
   bool isChunk() const { return parent != 0; }
+};
+
+struct GlobalConfig {
+  std::string name;     // C++ identifier emitted as a guest-address alias
+  uint32_t size = 0;    // Optional byte size hint for documentation/tooling
+  std::string comment;  // TOML comment text harvested from the config.
 };
 
 // Section info for analysis output
@@ -104,6 +114,7 @@ struct RecompilerConfig {
 
   // === Manual overrides ===
   std::unordered_map<uint32_t, FunctionConfig> functions;  ///< Function/chunk configuration
+  std::unordered_map<uint32_t, GlobalConfig> globals;       ///< Guest global/data symbol names
   std::unordered_map<uint32_t, JumpTable> switchTables;
   std::unordered_map<uint32_t, MidAsmHook> midAsmHooks;
   uint32_t longJmpAddress = 0;

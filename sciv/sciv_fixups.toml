@@ -89,20 +89,6 @@
 # keeps the auto-discovered boundary.
 0x821B1368 = { name = "obj_update_optional_source" }
 
-# --- Runtime crash fix: null-source filter read (see src/sciv_hooks.cpp) ---
-# obj_update_optional_source (0x821B1368) is called at 0x822E0B34 with r4 = 0 (no
-# source). On the r24 == 0 path, when the object's two control floats are equal,
-# control reaches 0x821B2204 `lhzx r10,r24,r10` (r10 = 0x1ED6A, r24 = 0), reading
-# guest 0x1ED6A -- benign on console, unmapped in the recomp -> intermittent AV
-# (logs/sciv_033.log). The hook fires only when r24 == 0: it sets r10 = 0 (filter
-# mode 0) and skips the load by jumping to 0x821B2208, where the original
-# compare/clear-bits logic resumes. r24 != 0 returns false -> original lhzx runs.
-[[midasm_hook]]
-address = 0x821B2204
-name = "sciv_sub_821B1368_null_source_filter_guard"
-registers = ["r24", "r10"]
-jump_address_on_true = 0x821B2208
-
 # --- Reverse-engineered names: boot intro / logo sequence (for [Game] SkipLogos)
 # RE'd 2026-06-21 from Assets/SCIV/default.disasm.txt + runtime probing. The boot
 # intro (a "now loading" phase then the five logos BANDAI NAMCO / Havok / CRI /
@@ -117,6 +103,301 @@ jump_address_on_true = 0x821B2208
 # NOTE: the 0x82459xxx-0x8245Bxxx "logo_player"/manager module is a DIFFERENT,
 # UNRELATED subsystem (its functions never run during the boot logos) -- do not
 # assume it is the boot-logo path.
+
+# --- Reverse-engineered names: controller / XInput polling path ---
+# RE'd 2026-06-30 from Assets/SCIV/default.disasm.txt and generated recomp.
+# This cluster is the human-controller side of player input: thin XamInput
+# wrappers, a per-pad poller, raw-to-internal button/axis normalization, repeat
+# tracking, and the XamInputGetKeystrokeEx event path. No per-player
+# human-vs-CPU mode flag was strong enough to name from this pass; the CPUAI
+# data-resource load path is named in the character-resource section below.
+0x8254A8D8 = { name = "sciv_xam_input_get_capabilities" }
+0x8254A8E0 = { name = "sciv_xam_input_get_state" }
+0x8254A8F0 = { name = "sciv_xam_input_set_vibration" }
+0x8254A9B8 = { name = "sciv_xam_input_get_keystroke" }
+
+0x823B4150 = { name = "sciv_input_device_dtor" }
+0x823B4198 = { name = "sciv_gamepad_ctor" }
+0x823B41F8 = { name = "sciv_gamepad_dtor" }
+0x823B4248 = { name = "sciv_gamepad_init" }
+0x823B4320 = { name = "sciv_gamepad_poll_state" }
+0x823B4420 = { name = "sciv_gamepad_copy_state" }
+0x823B4438 = { name = "sciv_gamepad_refresh_capabilities" }
+0x823B4530 = { name = "sciv_gamepad_normalize_state" }
+0x823B46E8 = { name = "sciv_gamepad_axis_after_deadzone" }
+0x823B47A0 = { name = "sciv_input_repeat_update" }
+
+0x823B48F0 = { name = "sciv_keystroke_input_dtor" }
+0x823B4938 = { name = "sciv_keystroke_input_init" }
+0x823B49B0 = { name = "sciv_keystroke_input_poll" }
+0x823B4AA0 = { name = "sciv_keystroke_copy_state" }
+0x823B4AB8 = { name = "sciv_keystroke_apply_user_events" }
+0x823B4BF0 = { name = "sciv_keystroke_clear_user_events" }
+
+# --- Reverse-engineered names: character resource / CPUAI data load path ---
+# RE'd 2026-06-30 from Assets/SCIV/default.disasm.txt and generated recomp.
+# This is the strongest CPUAI trail found in this pass. The bundle loader pulls
+# CCharacterMotion, CCharacter, CCharacterCpuai, and CWazaText resources into a
+# character resource object; it identifies CPUAI data, not the live P1/P2
+# human-vs-AI control switch.
+0x821D6A48 = { name = "sciv_character_motion_resource_get" }
+0x821D7190 = { name = "sciv_character_motion_slots_load" }
+
+0x821F36F8 = { name = "sciv_character_resource_bundle_load" }
+0x821F50D8 = { name = "sciv_character_motion_resource_lookup" }
+0x821F55B8 = { name = "sciv_character_data_resource_lookup" }
+0x821F6458 = { name = "sciv_character_cpuai_resource_lookup" }
+0x821FA708 = { name = "sciv_character_cpuai_resource_slot_create" }
+0x821F8338 = { name = "sciv_wazatext_resource_lookup" }
+
+# --- Reverse-engineered names: engine bootstrap / type-registry stream pump ---
+# The bootstrap path sets the type-registry descriptor/count globals, pumps the
+# engine main tick while a game-data load task is still current, then probes the
+# 14 engine type ids. The main tick calls the fixed-step driver; that driver
+# reaches the stream token dispatcher, whose vtable/op dispatch reaches the
+# registry field writer/deserializer (recovered through runtime probes and the
+# disassembly path around 0x821387d0, 0x82138b64, 0x8236f81c, and 0x8237ae70).
+0x82138428 = { name = "sciv_engine_bootstrap" }
+0x82138A00 = { name = "sciv_engine_main_tick" }
+0x8236F6B8 = { name = "sciv_engine_fixed_step_driver" }
+0x8236DA38 = { name = "sciv_registry_stream_dispatch" }
+0x8237AE70 = { name = "sciv_registry_field_deserialize" }
+
+# --- Reverse-engineered names: battle match start / combatant setup path ---
+# RE'd 2026-06-30 from Assets/SCIV/default.disasm.txt.
+# This cluster is the staged "enter battle" path for a match. The reset vtable
+# entry refreshes the two candidate combatant slots, initializes the per-side
+# matchup state, zeroes the current win counters at combatant +0x1E2B0, and
+# flips battle-start flags. The update vtable entry advances a state machine
+# keyed by this+0x168 and by battle_match_start_phase_request; it allocates the
+# battle-start objects, waits on their virtual readiness checks, then hands off
+# into normal battle/HUD setup.
+0x822A2CD0 = { name = "sciv_battle_matchup_snapshot_init" }
+0x822A2ED8 = { name = "sciv_battle_match_state_init_from_combatants" }
+0x822A3690 = { name = "sciv_battle_match_select_combatant_slots" }
+0x822A38C0 = { name = "sciv_battle_match_start_reset_state" }
+0x822A3968 = { name = "sciv_battle_match_start_sequence_update" }
+0x822A4AB8 = { name = "sciv_battle_match_start_emit_active_side_callout" }
+0x822A4B18 = { name = "sciv_battle_match_start_request_phase1" }
+0x822A4B28 = { name = "sciv_battle_match_start_request_phase2" }
+0x822A4B38 = { name = "sciv_battle_match_start_request_phase3" }
+0x822A4B48 = { name = "sciv_battle_get_active_combatant_root" }
+0x822A4BF0 = { name = "sciv_battle_get_active_slot_callout_id" }
+0x822A4CD8 = { name = "sciv_battle_emit_numeric_callout" }
+
+# --- Reverse-engineered names: battle HUD / health gauge path ---
+# RE'd 2026-06-30 from Assets/SCIV/default.disasm.txt and generated recomp.
+# The health-like values found here are per-player/per-slot record fields, not
+# standalone 1P/2P global floats. The rendered gauge is fed from the selected
+# player record's +0xD0 field, with +0xCC mirrored as a paired/secondary amount.
+# The timer trail is the HUD-side mirror/config path: the small state init seeds
+# two player clock-display records and writes the default 60-second value at
+# +0x30, the round-rule apply routine clamps/copies the incoming rule block, and
+# the round-entry loader copies the selected round entry's timer pair into
+# +0x30/+0x34 before reloading HUD record roots. This does not yet prove the
+# simulation-side frame countdown owner.
+0x8217DE08 = { name = "sciv_battle_health_gauge_set_value" }
+0x8217DE68 = { name = "sciv_battle_health_gauge_update_color" }
+
+0x8231A260 = { name = "sciv_battle_hud_timer_state_init_defaults" }
+0x8231A2B8 = { name = "sciv_battle_hud_controller_ctor" }
+0x8231A418 = { name = "sciv_battle_hud_round_rules_apply" }
+0x8231A560 = { name = "sciv_battle_hud_init_health_gauges" }
+0x8231A9B0 = { name = "sciv_battle_hud_update_dispatch" }
+0x8231AC10 = { name = "sciv_battle_hud_main_sequence_update" }
+0x8231B510 = { name = "sciv_battle_hud_sync_combatant_state" }
+
+0x8231D558 = { name = "sciv_battle_hud_activate_player_slot" }
+0x8231D638 = { name = "sciv_battle_hud_startup_sequence_update" }
+0x8231D870 = { name = "sciv_battle_hud_player_record_init_from_snapshot" }
+0x8231D9C8 = { name = "sciv_battle_hud_player_records_load_from_table" }
+0x8231DCC0 = { name = "sciv_battle_hud_player_record_queue_update" }
+0x8231DF50 = { name = "sciv_battle_hud_player_slots_clear" }
+0x8231DFC0 = { name = "sciv_battle_hud_round_entry_select_and_load" }
+0x8231E0E0 = { name = "sciv_battle_hud_player_records_init" }
+0x8231E1D0 = { name = "sciv_battle_hud_player_record_table_load" }
+0x8231E2A0 = { name = "sciv_battle_hud_reset_player_roots" }
+0x8231E300 = { name = "sciv_battle_hud_bind_player_slot" }
+0x8231E410 = { name = "sciv_battle_hud_load_player_metadata" }
+0x8231E5A8 = { name = "sciv_battle_hud_select_slot_and_refresh_health" }
+
+# --- Reverse-engineered names: battle damage demo / health adjustment path ---
+# RE'd 2026-07-02 from Assets/SCIV/default.disasm.txt and generated recomp.
+# This cluster looks like a controlled battle damage demo/test path rather than
+# the confirmed core hit resolver: it owns hit/guard/BGM child requests and an
+# input/flag-driven update that nudges health-like fields at +0xCC/+0xD0/+0xD4.
+# The HUD refresh path above consumes +0xD0 as the rendered health gauge value.
+0x8215D3C8 = { name = "sciv_battle_damage_demo_emit_effect_at_slot" }
+0x8215D558 = { name = "sciv_battle_damage_demo_emit_scaled_effect_at_slot" }
+0x8215EAD0 = { name = "sciv_battle_damage_demo_count_action_records" }
+0x8215EB88 = { name = "sciv_battle_damage_demo_unpack_action_records" }
+0x8215ED28 = { name = "sciv_battle_damage_demo_classify_action_record" }
+0x8215EE40 = { name = "sciv_battle_damage_demo_arm_hit_child" }
+
+0x82161040 = { name = "sciv_battle_damage_demo_init" }
+0x821610B0 = { name = "sciv_battle_damage_demo_sequence_update" }
+0x82161C60 = { name = "sciv_battle_damage_demo_reset_effect" }
+0x82161C90 = { name = "sciv_battle_damage_demo_release_effect" }
+0x82161CC8 = { name = "sciv_battle_damage_demo_advance_hit_cycle" }
+0x82161E20 = { name = "sciv_battle_damage_demo_dtor" }
+0x82161EA0 = { name = "sciv_battle_damage_demo_request_start" }
+0x82161EB0 = { name = "sciv_battle_damage_demo_apply_manual_health_adjustment" }
+0x82162170 = { name = "sciv_battle_damage_demo_emit_health_preview" }
+0x821621F0 = { name = "sciv_battle_damage_demo_release_damage_child" }
+0x82162228 = { name = "sciv_battle_damage_demo_get_type_id" }
+0x82162230 = { name = "sciv_battle_damage_demo_recovery_sequence_update" }
+0x82162488 = { name = "sciv_battle_damage_demo_recovery_sequence_dtor" }
+
+# --- Reverse-engineered names: battle match win-count / 1P-2P result path ---
+# RE'd 2026-06-30 from Assets/SCIV/default.disasm.txt.
+# The strongest match-count trail is per-player combatant state:
+#   +0x1E2B0 = current match/round wins for the side (halfword)
+#   +0x1E2B4 = target/limit copied into both sides during battle setup
+#   +0x1E2B8 = side-local counter incremented with +0x1E2B0 on win events
+# sciv_battle_match_win_counts_update loops both player roots, increments the
+# winning side, compares current wins against the target/limit, and records which
+# side reached the threshold. The same current-win fields are zeroed during
+# sciv_battle_match_start_reset_state. The later banner path compares the paired
+# result descriptors and emits the 1P/2P winner-side message/event.
+0x821228E0 = { name = "sciv_battle_match_result_state_remap" }
+0x82122950 = { name = "sciv_battle_match_win_counts_update" }
+
+0x822D8AE8 = { name = "sciv_result_descriptor_lookup" }
+0x823428E8 = { name = "sciv_battle_result_banner_capture_winner_side" }
+0x823429F0 = { name = "sciv_battle_result_get_changed_winner_side" }
+0x82342AD8 = { name = "sciv_battle_result_banner_emit_winner_side_message" }
+0x82342CA0 = { name = "sciv_battle_result_banner_is_finished" }
+0x82342CA8 = { name = "sciv_battle_result_banner_force_finish" }
+
+# --- Reverse-engineered names: title / mode-select menu navigation and draw path ---
+# RE'd 2026-07-01 from Assets/SCIV/default.disasm.txt.
+# This cluster owns the Mode Select menu reached from the title: it sits near
+# the menu route/name strings at 0x820C94B4/0x820C94CC and the localized
+# "Mode Select" presence string at 0x8314D318. The update path decodes a packed
+# item table into F/O/W buckets, follows gamepad input, updates selected indices
+# at +0x178/+0x179 and focus/scroll floats at +0x170/+0x174, and the draw path
+# emits the menu tiles/cursor through the 2D draw helpers.
+0x82298158 = { name = "sciv_mode_select_ctor" }
+0x82298290 = { name = "sciv_mode_select_deleting_dtor" }
+0x822982F8 = { name = "sciv_mode_select_dtor" }
+0x822983E0 = { name = "sciv_mode_select_reset_navigation_state" }
+0x82298478 = { name = "sciv_mode_select_update" }
+0x8229A170 = { name = "sciv_mode_select_draw" }
+0x8229A660 = { name = "sciv_mode_select_release_resources" }
+0x8229A6C0 = { name = "sciv_mode_select_unpack_entry_table" }
+0x8229AC18 = { name = "sciv_mode_select_entry_requirements_met" }
+0x8229ACC0 = { name = "sciv_mode_select_map_entry_route" }
+0x8229AED0 = { name = "sciv_mode_select_update_focus_scroll" }
+
+# --- Reverse-engineered names: character-select UI/render/load path ---
+# RE'd 2026-07-02 from Assets/SCIV/default.disasm.txt and
+# Assets/SCIV/default.basefile.exe strings. Anchored on the ChrselWork, faceicon,
+# ChrCtrl, chrselsq, CChrselMotCam, ChrselFacial, thumbnail, StageSelect, and
+# CharaDraw string references plus the cdata/chrsel and *_select texture assets.
+0x8224F950 = { name = "sciv_chrsel_work_ctor" }
+0x82256650 = { name = "sciv_chrsel_face_icon_grid_create" }
+0x82258958 = { name = "sciv_chrsel_navigation_update" }
+0x8225A9F8 = { name = "sciv_chrsel_sequence_create" }
+0x8225D9C0 = { name = "sciv_chrsel_load_flow_update" }
+0x82261AD0 = { name = "sciv_chrsel_thumbnail_create_full" }
+0x82261B68 = { name = "sciv_chrsel_thumbnail_create_basic" }
+0x822D7928 = { name = "sciv_stage_select_ctor" }
+0x822E0100 = { name = "sciv_chrsel_chara_draw_setup" }
+
+# --- Reverse-engineered names: character motion playback / segment state ---
+# RE'd 2026-07-02 from Assets/SCIV/default.disasm.txt and generated recomp.
+# This is the runtime side of the earlier CCharacterMotion resource load path:
+# sciv_character_motion_player_create binds a selected motion resource into a
+# small 0xA0-byte player object, and sciv_character_motion_player_apply pulls
+# motion chunks from that resource, applies the live character motion table, then
+# drives the transient segment-state helpers below. The 0x821B08A8..0x821B10D8
+# helpers manage active/secondary motion segments and advance/sample their frame
+# state; they are playback state, not the resource bundle loader itself.
+0x82200C28 = { name = "sciv_character_motion_player_create" }
+0x82200D80 = { name = "sciv_character_motion_player_release" }
+0x82200E00 = { name = "sciv_character_motion_player_apply" }
+
+0x823624A0 = { name = "sciv_character_motion_table_apply" }
+0x82363E00 = { name = "sciv_character_motion_record_batch_apply" }
+0x82363FE0 = { name = "sciv_character_motion_equipment_table_apply" }
+
+0x821B08A8 = { name = "sciv_character_motion_segment_state_init" }
+0x821B0B68 = { name = "sciv_character_motion_segment_state_arm" }
+0x821B0C08 = { name = "sciv_character_motion_segment_state_advance" }
+0x821B0DB8 = { name = "sciv_character_motion_segment_start" }
+0x821B0E48 = { name = "sciv_character_motion_segment_switch" }
+0x821B0FE8 = { name = "sciv_character_motion_segments_reset" }
+0x821B10D8 = { name = "sciv_character_motion_segment_sample" }
+
+[globals]
+
+# CPUAI data/resource anchors. The cpudata strings select the CPU data archive
+# directory; the CCharacterCpuai type name is passed through
+# sciv_character_cpuai_resource_lookup, whose slot-create helper installs this
+# vtable on the resource node. This still identifies the data/resource side of
+# AI input generation, not the final live pad-command synthesis routine.
+0x820C0138 = { name = "cpudata_archive_name", size = 0x0C } # "cpudata.olk"
+0x820C0144 = { name = "cpudata_archive_root", size = 0x09 } # "/cpudata"
+0x820C2FD0 = { name = "character_cpuai_resource_type_name", size = 0x10 } # "CCharacterCpuai"
+0x820C336C = { name = "character_cpuai_resource_vtable", size = 0x2C }
+
+# Battle HUD player roots/panel state. The health gauge path reads live
+# health-like fields from per-player records, then mirrors them through the two
+# HUD roots here.
+0x82879DD4 = { name = "battle_hud_player_roots", size = 0x08 }
+0x82CF7C80 = { name = "battle_hud_player_panel_state", size = 0x4EC8 } # 2 * 0x2764-byte player panels
+
+# Battle-start phase latch. The tiny callbacks at 0x822A4B18/0x822A4B28/
+# 0x822A4B38 store 1/2/3 here, and sciv_battle_match_start_sequence_update
+# consumes it to pick the next startup sub-sequence.
+0x829FC8C0 = "battle_match_start_phase_request"
+
+# Engine type registry state. The registry array is BSS/runtime-built; the
+# descriptor table is file-backed and assigned at sciv_engine_bootstrap
+# 0x82138730..0x8213873c together with count=14.
+0x830F5198 = { name = "type_registry_entries", size = 0x1C0 } # 14 entries * 0x20 bytes
+0x82B56F24 = "type_registry_count"
+0x82B56F20 = "type_registry_descriptor_table_ptr"
+0x82868CD0 = "type_registry_descriptor_table"
+0x830F4200 = "current_registry_manager"
+0x830F4210 = "registry_stream_ptr"
+
+# Bootstrap drain-loop state: sciv_engine_bootstrap pumps sciv_engine_main_tick
+# while [game_data_wait_task_ptr] is non-null and its +0x30 field matches
+# [game_data_wait_target_ptr].
+0x82C37C10 = "game_data_wait_target_ptr"
+0x82C37C14 = "game_data_wait_task_ptr"
+
+# Boot intro modal object used by the SkipLogos clock-acceleration hook.
+0x82891D50 = "boot_intro_modal_state"
+
+# --- Runtime crash fix: null-source filter read (see src/sciv_hooks.cpp) ---
+# obj_update_optional_source (0x821B1368) is called at 0x822E0B34 with r4 = 0 (no
+# source). On the r24 == 0 path, when the object's two control floats are equal,
+# control reaches 0x821B2204 `lhzx r10,r24,r10` (r10 = 0x1ED6A, r24 = 0), reading
+# guest 0x1ED6A -- benign on console, unmapped in the recomp -> intermittent AV
+# (logs/sciv_033.log). The hook fires only when r24 == 0: it sets r10 = 0 (filter
+# mode 0) and skips the load by jumping to 0x821B2208, where the original
+# compare/clear-bits logic resumes. r24 != 0 returns false -> original lhzx runs.
+[[midasm_hook]]
+address = 0x821B2204
+name = "sciv_sub_821B1368_null_source_filter_guard"
+registers = ["r24", "r10"]
+jump_address_on_true = 0x821B2208
+
+# --- Runtime crash fix: null container in sub_82124CD8 (see src/sciv_hooks.cpp) ---
+# sub_82124CD8 (manager lookup, global 0x82CF0AF8) is designed to return 0 -- every
+# caller null-checks it (e.g. sub_82227268 @ 0x82227708 `cmplwi r3,0; beq`). But it
+# reads [r5+0] at 0x82124D14 with no null check, assuming sub_821F2A10 (-> r5) is
+# populated. SkipLogos acceleration lets the engine-tick thread outrun container
+# population: r5 == 0 -> read of guest 0 -> host 0x100000000 AV (logs 091+, only in
+# accelerated boots; absent from 1x runs 045-067). Fire when r5 == 0 to take the
+# function's own "not found" exit (0x82124D5C, `li r3,0; return`).
+[[midasm_hook]]
+address = 0x82124D14
+name = "sciv_sub_82124CD8_null_container_guard"
+registers = ["r5"]
+jump_address_on_true = 0x82124D5C
 
 # --- [Game] SkipLogos: scoped guest-clock acceleration (see src/sciv_hooks.cpp)
 # The boot-intro fades+holds are paced by the guest time-base (mftb ->

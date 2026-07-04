@@ -37,6 +37,10 @@ class FunctionNode {
   uint32_t end() const { return base_ + size_; }
   const std::string& name() const { return name_; }
 
+  // Optional documentation comment (harvested from the TOML config) emitted
+  // above the recompiled function. Empty when none. Lines joined with '\n'.
+  const std::string& comment() const { return comment_; }
+
   // Code access - cached pointer to instruction bytes
   const uint8_t* code() const { return code_; }
   bool hasCode() const { return code_ != nullptr; }
@@ -140,6 +144,7 @@ class FunctionNode {
   bool hasExceptionInfo() const { return exceptionInfo_.has_value() && exceptionInfo_->hasInfo(); }
 
   void setName(std::string name) { name_ = std::move(name); }
+  void setComment(std::string comment) { comment_ = std::move(comment); }
 
  private:
   //=========================================================================
@@ -178,6 +183,7 @@ class FunctionNode {
   uint32_t base_;
   uint32_t size_;
   std::string name_;
+  std::string comment_;  // Optional doc comment from config (see comment())
   const uint8_t* code_ = nullptr;  // Cached pointer to instruction bytes
   FunctionAuthority authority_;
   FunctionState state_ = FunctionState::kRegistered;
